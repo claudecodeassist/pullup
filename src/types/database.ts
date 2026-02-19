@@ -1,0 +1,235 @@
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[];
+
+export interface Database {
+  public: {
+    Tables: {
+      locations: {
+        Row: {
+          id: string;
+          name: string;
+          latitude: number;
+          longitude: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          latitude: number;
+          longitude: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          latitude?: number;
+          longitude?: number;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      profiles: {
+        Row: {
+          id: string;
+          display_name: string | null;
+          preferred_sport: "pickleball" | "spikeball" | null;
+          skill_level: "beginner" | "intermediate" | "advanced" | "any" | null;
+          favorite_location_id: string | null;
+          expo_push_token: string | null;
+          onboarded: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id: string;
+          display_name?: string | null;
+          preferred_sport?: "pickleball" | "spikeball" | null;
+          skill_level?: "beginner" | "intermediate" | "advanced" | "any" | null;
+          favorite_location_id?: string | null;
+          expo_push_token?: string | null;
+          onboarded?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          display_name?: string | null;
+          preferred_sport?: "pickleball" | "spikeball" | null;
+          skill_level?: "beginner" | "intermediate" | "advanced" | "any" | null;
+          favorite_location_id?: string | null;
+          expo_push_token?: string | null;
+          onboarded?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "profiles_favorite_location_id_fkey";
+            columns: ["favorite_location_id"];
+            referencedRelation: "locations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      games: {
+        Row: {
+          id: string;
+          host_id: string;
+          sport: "pickleball" | "spikeball";
+          skill_level: "beginner" | "intermediate" | "advanced" | "any";
+          location_id: string;
+          starts_at: string;
+          max_players: number;
+          current_players: number;
+          status: "open" | "full" | "cancelled" | "completed";
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          host_id: string;
+          sport: "pickleball" | "spikeball";
+          skill_level?: "beginner" | "intermediate" | "advanced" | "any";
+          location_id: string;
+          starts_at: string;
+          max_players: number;
+          current_players?: number;
+          status?: "open" | "full" | "cancelled" | "completed";
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          host_id?: string;
+          sport?: "pickleball" | "spikeball";
+          skill_level?: "beginner" | "intermediate" | "advanced" | "any";
+          location_id?: string;
+          starts_at?: string;
+          max_players?: number;
+          current_players?: number;
+          status?: "open" | "full" | "cancelled" | "completed";
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "games_host_id_fkey";
+            columns: ["host_id"];
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "games_location_id_fkey";
+            columns: ["location_id"];
+            referencedRelation: "locations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      game_participants: {
+        Row: {
+          id: string;
+          game_id: string;
+          user_id: string;
+          status: "joined" | "left";
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          game_id: string;
+          user_id: string;
+          status?: "joined" | "left";
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          game_id?: string;
+          user_id?: string;
+          status?: "joined" | "left";
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "game_participants_game_id_fkey";
+            columns: ["game_id"];
+            referencedRelation: "games";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "game_participants_user_id_fkey";
+            columns: ["user_id"];
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      messages: {
+        Row: {
+          id: string;
+          game_id: string;
+          user_id: string;
+          content: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          game_id: string;
+          user_id: string;
+          content: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          game_id?: string;
+          user_id?: string;
+          content?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "messages_game_id_fkey";
+            columns: ["game_id"];
+            referencedRelation: "games";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "messages_user_id_fkey";
+            columns: ["user_id"];
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+    };
+    Views: Record<string, never>;
+    Functions: Record<string, never>;
+    Enums: {
+      sport_type: "pickleball" | "spikeball";
+      skill_level_type: "beginner" | "intermediate" | "advanced" | "any";
+      game_status_type: "open" | "full" | "cancelled" | "completed";
+      participant_status_type: "joined" | "left";
+    };
+    CompositeTypes: Record<string, never>;
+  };
+}
+
+export type Tables<T extends keyof Database["public"]["Tables"]> =
+  Database["public"]["Tables"][T]["Row"];
+export type InsertTables<T extends keyof Database["public"]["Tables"]> =
+  Database["public"]["Tables"][T]["Insert"];
+
+export type Location = Tables<"locations">;
+export type Profile = Tables<"profiles">;
+export type Game = Tables<"games">;
+export type GameParticipant = Tables<"game_participants">;
+export type Message = Tables<"messages">;
+
+export type GameWithLocation = Game & { locations: Location };
