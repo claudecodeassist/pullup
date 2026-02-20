@@ -20,6 +20,8 @@ import { useAuth } from "@/providers/AuthProvider";
 import { useGame } from "@/hooks/useGame";
 import { useGameChat } from "@/hooks/useGameChat";
 import { useMatches } from "@/hooks/useMatches";
+import { useFriends } from "@/hooks/useFriends";
+import { useGameInvites } from "@/hooks/useGameInvites";
 import { JoinButton } from "@/components/game/JoinButton";
 import { RosterList } from "@/components/game/RosterList";
 import { ChatMessage } from "@/components/game/ChatMessage";
@@ -83,6 +85,18 @@ export default function GameDetailScreen() {
   const [teamAssignments, setTeamAssignments] = useState<Record<string, 1 | 2>>({});
   const [savingMatch, setSavingMatch] = useState(false);
 
+  // Game lifecycle (start / end)
+  const [showStartConfirm, setShowStartConfirm] = useState(false);
+  const [showEndConfirm, setShowEndConfirm] = useState(false);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
+
+  // Friend invites
+  const { friends, fetchFriends } = useFriends(user?.id);
+  const { sendInvite } = useGameInvites(user?.id);
+  const [showInviteFriends, setShowInviteFriends] = useState(false);
+  const [invitedIds, setInvitedIds] = useState<Set<string>>(new Set());
+  const [invitingId, setInvitingId] = useState<string | null>(null);
+
   // Guest prompt state
   const [showGuestPrompt, setShowGuestPrompt] = useState(false);
   const [guestName, setGuestName] = useState("");
@@ -102,10 +116,32 @@ export default function GameDetailScreen() {
   const [saving, setSaving] = useState(false);
   const [showBigCode, setShowBigCode] = useState(false);
 
-  // Fetch matches when game loads
+  // Fetch matches and friends when game loads
   useEffect(() => {
     if (id) fetchMatches();
   }, [id, fetchMatches]);
+
+  const handleStartGame = async () => {
+    setUpdatingStatus(true);
+    await supabase
+      .from("games")
+      .update({ status: "started" as any, started_at: new Date().toISOString() })
+      .eq("id", id as string);
+    setUpdatingStatus(false);
+    setShowStartConfirm(false);
+    refresh();
+  };
+
+  const handleEndGame = async () => {
+    setUpdatingStatus(true);
+    await supabase
+      .from("games")
+      .update({ status: "completed" as const, ended_at: new Date().toISOString() } as any)
+      .eq("id", id as string);
+    setUpdatingStatus(false);
+    setShowEndConfirm(false);
+    refresh();
+  };
 
   // Scroll chat to bottom when new messages arrive
   useEffect(() => {
@@ -247,6 +283,11 @@ export default function GameDetailScreen() {
             />
             <Text style={styles.heroEmoji}>{si.emoji}</Text>
             <Text style={styles.heroTitle}>{si.label}</Text>
+            {game.status === "started" && (
+              <View style={styles.liveBadge}>
+                <Text style={styles.liveBadgeText}>● LIVE</Text>
+              </View>
+            )}
             <Text style={styles.heroTime}>
               {formatRelative(game.starts_at)}
             </Text>
@@ -622,7 +663,29 @@ export default function GameDetailScreen() {
                 }}
               />
             )}
-            {isHost && (
+            {hasJoined && (
+              <ActionChip
+                label="👥 Invite"
+                onPress={() => {
+                  fetchFriends();
+                  setShowInviteFriends(true);
+                }}
+              />
+            )}
+            {isHost && (game.status === "open" || game.status === "full") && (
+              <ActionChip
+                label="▶ Start"
+                onPress={() => setShowStartConfirm(true)}
+              />
+            )}
+            {isHost && game.status === "started" && (
+              <ActionChip
+                label="⏹ End Game"
+                onPress={() => setShowEndConfirm(true)}
+                danger
+              />
+            )}
+            {isHost && (game.status === "open" || game.status === "full") && (
               <ActionChip
                 label="Cancel Game"
                 onPress={handleCancel}
@@ -845,6 +908,139 @@ export default function GameDetailScreen() {
                 )}
               </Pressable>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ═══ START GAME CONFIRM ═══ */}
+      <Modal
+        visible={showStartConfirm}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowStartConfirm(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Start this PullUp?</Text>
+            <Text style={[styles.modalSubtitle, { color: Colors.textSecondary, textAlign: "center", marginBottom: Spacing.xl }]}>
+              This marks the session as live. You can record matches and end the session when done.
+            </Text>
+            <View style={styles.modalActions}>
+              <Pressable
+                style={styles.modalCancel}
+                onPress={() => setShowStartConfirm(false)}
+              >
+                <Text style={styles.modalCancelText}>Not yet</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modalConfirm, updatingStatus && { opacity: 0.6 }]}
+                disabled={updatingStatus}
+                onPress={handleStartGame}
+              >
+                {updatingStatus ? (
+                  <ActivityIndicator size="small" color={Colors.dark} />
+                ) : (
+                  <Text style={styles.modalConfirmText}>Start!</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ═══ END GAME CONFIRM ═══ */}
+      <Modal
+        visible={showEndConfirm}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowEndConfirm(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>End this PullUp?</Text>
+            <Text style={{ color: Colors.textSecondary, textAlign: "center", marginBottom: Spacing.xl }}>
+              This will mark the session as completed. All recorded matches will be saved.
+            </Text>
+            <View style={styles.modalActions}>
+              <Pressable
+                style={styles.modalCancel}
+                onPress={() => setShowEndConfirm(false)}
+              >
+                <Text style={styles.modalCancelText}>Keep going</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modalConfirm, { backgroundColor: Colors.error }, updatingStatus && { opacity: 0.6 }]}
+                disabled={updatingStatus}
+                onPress={handleEndGame}
+              >
+                {updatingStatus ? (
+                  <ActivityIndicator size="small" color={Colors.white} />
+                ) : (
+                  <Text style={[styles.modalConfirmText, { color: Colors.white }]}>End Session</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ═══ INVITE FRIENDS MODAL ═══ */}
+      <Modal
+        visible={showInviteFriends}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowInviteFriends(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { maxHeight: "75%" }]}>
+            <Text style={styles.modalTitle}>👥 Invite Friends</Text>
+            {friends.length === 0 ? (
+              <Text style={{ color: Colors.textMuted, textAlign: "center", marginVertical: Spacing.xl }}>
+                No friends yet. Add friends from your profile!
+              </Text>
+            ) : (
+              <ScrollView showsVerticalScrollIndicator={false} style={{ width: "100%" }}>
+                {friends.map((f) => {
+                  const alreadyJoined = participants.some((p) => p.user_id === f.profile.id);
+                  const alreadyInvited = invitedIds.has(f.profile.id);
+                  return (
+                    <View key={f.id} style={styles.inviteFriendRow}>
+                      <Text style={styles.inviteFriendName} numberOfLines={1}>
+                        {f.profile.display_name ?? "Player"}
+                      </Text>
+                      {alreadyJoined ? (
+                        <Text style={styles.inviteStatus}>Already in</Text>
+                      ) : alreadyInvited ? (
+                        <Text style={[styles.inviteStatus, { color: Colors.success }]}>Invited ✓</Text>
+                      ) : (
+                        <Pressable
+                          style={styles.inviteBtn}
+                          disabled={invitingId === f.profile.id}
+                          onPress={async () => {
+                            setInvitingId(f.profile.id);
+                            await sendInvite(id as string, f.profile.id, user?.id ?? "");
+                            setInvitedIds((prev) => new Set([...prev, f.profile.id]));
+                            setInvitingId(null);
+                          }}
+                        >
+                          {invitingId === f.profile.id ? (
+                            <ActivityIndicator size="small" color={Colors.dark} />
+                          ) : (
+                            <Text style={styles.inviteBtnText}>Invite</Text>
+                          )}
+                        </Pressable>
+                      )}
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            )}
+            <Pressable
+              style={[styles.modalCancel, { marginTop: Spacing.lg, width: "100%" }]}
+              onPress={() => setShowInviteFriends(false)}
+            >
+              <Text style={styles.modalCancelText}>Done</Text>
+            </Pressable>
           </View>
         </View>
       </Modal>
@@ -1607,6 +1803,56 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xs,
     textAlign: "center",
     fontStyle: "italic",
+  },
+
+  /* LIVE badge */
+  liveBadge: {
+    backgroundColor: Colors.success + "22",
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: Colors.success,
+    marginBottom: Spacing.sm,
+  },
+  liveBadgeText: {
+    fontSize: FontSize.xs,
+    fontWeight: "800",
+    color: Colors.success,
+    letterSpacing: 1,
+  },
+
+  /* Invite friends */
+  inviteFriendRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    gap: Spacing.sm,
+  },
+  inviteFriendName: {
+    flex: 1,
+    fontSize: FontSize.md,
+    color: Colors.text,
+  },
+  inviteStatus: {
+    fontSize: FontSize.sm,
+    color: Colors.textMuted,
+    fontWeight: "600",
+  },
+  inviteBtn: {
+    backgroundColor: Colors.accent,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    minWidth: 60,
+    alignItems: "center",
+  },
+  inviteBtnText: {
+    fontSize: FontSize.sm,
+    fontWeight: "700",
+    color: Colors.dark,
   },
 
   /* Record match modal */
