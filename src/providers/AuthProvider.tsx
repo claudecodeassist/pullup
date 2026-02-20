@@ -16,7 +16,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const { isSignedIn, isLoaded, signOut: clerkSignOut, getToken } = useClerkAuth();
+  const { isSignedIn, isLoaded, signOut: clerkSignOut } = useClerkAuth();
   const { user: clerkUser } = useUser();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
@@ -31,7 +31,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // Ensure profile exists in Supabase (upsert on first login)
+    // Check if profile exists
     const { data: existing } = await supabase
       .from("profiles")
       .select("*")
@@ -42,17 +42,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setProfile(existing as Profile);
     } else {
       // Create profile for new Clerk user
+      const displayName =
+        clerkUser?.firstName ??
+        clerkUser?.primaryEmailAddress?.emailAddress?.split("@")[0] ??
+        null;
+
       const { data: created } = await supabase
         .from("profiles")
-        .upsert({ id: userId, display_name: clerkUser?.firstName ?? null } as any, {
-          onConflict: "id",
+        .insert({
+          id: userId,
+          display_name: displayName,
         })
         .select("*")
         .single();
+
       setProfile(created as Profile | null);
     }
     setProfileLoading(false);
-  }, [userId, clerkUser?.firstName]);
+  }, [userId, clerkUser?.firstName, clerkUser?.primaryEmailAddress?.emailAddress]);
 
   useEffect(() => {
     if (isLoaded && isSignedIn) {
@@ -93,7 +100,6 @@ export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
 
-  // Return a shape compatible with what screens expect
   return {
     session: ctx.isSignedIn ? {} : null,
     user: ctx.userId ? { id: ctx.userId, email: ctx.email } : null,

@@ -82,12 +82,15 @@ export interface Database {
           host_id: string;
           sport: "pickleball" | "spikeball";
           skill_level: "beginner" | "intermediate" | "advanced" | "any";
-          location_id: string;
+          location_id: string | null;
           starts_at: string;
           max_players: number;
           current_players: number;
           status: "open" | "full" | "cancelled" | "completed";
           notes: string | null;
+          has_equipment: boolean;
+          extra_equipment: boolean;
+          time_flexible: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -96,12 +99,15 @@ export interface Database {
           host_id: string;
           sport: "pickleball" | "spikeball";
           skill_level?: "beginner" | "intermediate" | "advanced" | "any";
-          location_id: string;
+          location_id?: string | null;
           starts_at: string;
           max_players: number;
           current_players?: number;
           status?: "open" | "full" | "cancelled" | "completed";
           notes?: string | null;
+          has_equipment?: boolean;
+          extra_equipment?: boolean;
+          time_flexible?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -110,12 +116,15 @@ export interface Database {
           host_id?: string;
           sport?: "pickleball" | "spikeball";
           skill_level?: "beginner" | "intermediate" | "advanced" | "any";
-          location_id?: string;
+          location_id?: string | null;
           starts_at?: string;
           max_players?: number;
           current_players?: number;
           status?: "open" | "full" | "cancelled" | "completed";
           notes?: string | null;
+          has_equipment?: boolean;
+          extra_equipment?: boolean;
+          time_flexible?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -123,7 +132,7 @@ export interface Database {
           {
             foreignKeyName: "games_host_id_fkey";
             columns: ["host_id"];
-            referencedRelation: "users";
+            referencedRelation: "profiles";
             referencedColumns: ["id"];
           },
           {
@@ -166,7 +175,7 @@ export interface Database {
           {
             foreignKeyName: "game_participants_user_id_fkey";
             columns: ["user_id"];
-            referencedRelation: "users";
+            referencedRelation: "profiles";
             referencedColumns: ["id"];
           },
         ];
@@ -203,7 +212,7 @@ export interface Database {
           {
             foreignKeyName: "messages_user_id_fkey";
             columns: ["user_id"];
-            referencedRelation: "users";
+            referencedRelation: "profiles";
             referencedColumns: ["id"];
           },
         ];
@@ -232,4 +241,4 @@ export type Game = Tables<"games">;
 export type GameParticipant = Tables<"game_participants">;
 export type Message = Tables<"messages">;
 
-export type GameWithLocation = Game & { locations: Location };
+export type GameWithLocation = Game & { locations: Location | null };

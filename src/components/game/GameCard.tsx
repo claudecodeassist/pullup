@@ -2,9 +2,14 @@ import React from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
-import { Colors, Gradient, BorderRadius, FontSize, Spacing } from "@/lib/constants";
-import { formatGameTime } from "@/lib/datetime";
-import { SportIcon } from "./SportIcon";
+import {
+  Colors,
+  Gradient,
+  FontSize,
+  Spacing,
+  BorderRadius,
+} from "@/lib/constants";
+import { formatGameTime, formatRelative } from "@/lib/datetime";
 import type { GameWithLocation } from "@/types/database";
 
 interface GameCardProps {
@@ -12,70 +17,100 @@ interface GameCardProps {
 }
 
 export function GameCard({ game }: GameCardProps) {
+  const progress =
+    game.max_players > 0 ? game.current_players / game.max_players : 0;
+  const isFull = game.current_players >= game.max_players;
   const spotsLeft = game.max_players - game.current_players;
-  const isFull = spotsLeft <= 0;
-  const fillPct = Math.min((game.current_players / game.max_players) * 100, 100);
 
   return (
     <Pressable
       onPress={() => router.push(`/game/${game.id}`)}
-      style={({ pressed }) => [
-        styles.card,
-        pressed && styles.cardPressed,
-      ]}
+      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
     >
-      {/* Subtle gradient shine on top edge */}
-      <LinearGradient
-        colors={[...Gradient.cardShine]}
-        style={styles.shine}
-      />
-
-      <View style={styles.header}>
-        <SportIcon sport={game.sport} />
-        <View style={styles.headerText}>
-          <Text style={styles.sport}>
+      {/* Top: sport + relative time */}
+      <View style={styles.topRow}>
+        <View style={styles.sportBadge}>
+          <Text style={styles.sportEmoji}>
+            {game.sport === "pickleball" ? "🏓" : "🔵"}
+          </Text>
+          <Text style={styles.sportName}>
             {game.sport === "pickleball" ? "Pickleball" : "Spikeball"}
           </Text>
-          <Text style={styles.skill}>{game.skill_level}</Text>
         </View>
-        <View style={[styles.badge, isFull && styles.badgeFull]}>
-          <Text style={[styles.badgeText, isFull && styles.badgeFullText]}>
-            {isFull ? "FULL" : `${spotsLeft} left`}
+        <Text style={styles.relTime}>{formatRelative(game.starts_at)}</Text>
+      </View>
+
+      {/* Details */}
+      <View style={styles.detailRow}>
+        <Text style={styles.detailIcon}>📍</Text>
+        <Text style={styles.detailText}>
+          {game.locations?.name ?? "Any court"}
+        </Text>
+      </View>
+      <View style={styles.detailRow}>
+        <Text style={styles.detailIcon}>🕐</Text>
+        <Text style={styles.detailText}>{formatGameTime(game.starts_at)}</Text>
+        {game.time_flexible && (
+          <View style={styles.flexBadge}>
+            <Text style={styles.flexText}>Flexible</Text>
+          </View>
+        )}
+      </View>
+
+      {/* Tags */}
+      <View style={styles.tagsRow}>
+        {game.skill_level !== "any" && (
+          <View style={styles.tag}>
+            <Text style={styles.tagText}>{game.skill_level}</Text>
+          </View>
+        )}
+        {game.has_equipment && (
+          <View style={styles.tag}>
+            <Text style={styles.tagText}>
+              {game.sport === "pickleball" ? "🏓 Has paddles" : "🔵 Has net"}
+            </Text>
+          </View>
+        )}
+        {game.extra_equipment && (
+          <View style={[styles.tag, styles.tagHighlight]}>
+            <Text style={[styles.tagText, styles.tagHighlightText]}>
+              🎁 Extras to share
+            </Text>
+          </View>
+        )}
+      </View>
+
+      {/* Bottom: count + progress */}
+      <View style={styles.bottomRow}>
+        <View style={styles.playerInfo}>
+          <Text style={styles.playerCount}>
+            {game.current_players}
+            <Text style={styles.playerMax}>/{game.max_players}</Text>
+          </Text>
+          <Text style={styles.spotsText}>
+            {isFull
+              ? "Full"
+              : `${spotsLeft} spot${spotsLeft === 1 ? "" : "s"} left`}
           </Text>
         </View>
-      </View>
-
-      <View style={styles.details}>
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>📍</Text>
-          <Text style={styles.detailValue}>{game.locations?.name ?? "TBD"}</Text>
-        </View>
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>🕐</Text>
-          <Text style={styles.detailValue}>{formatGameTime(game.starts_at)}</Text>
-        </View>
-      </View>
-
-      {/* Progress bar */}
-      <View style={styles.progressWrap}>
-        <View style={styles.progressBar}>
+        <View style={styles.progressBg}>
           <LinearGradient
-            colors={isFull ? [Colors.error, Colors.error] : [...Gradient.brand]}
+            colors={isFull ? ["#FF453A", "#FF6961"] : [...Gradient.brand]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
-            style={[styles.progressFill, { width: `${fillPct}%` }]}
+            style={[
+              styles.progressFill,
+              { width: `${Math.min(progress * 100, 100)}%` as any },
+            ]}
           />
         </View>
-        <Text style={styles.playerCount}>
-          {game.current_players}/{game.max_players}
-        </Text>
       </View>
 
-      {game.notes ? (
-        <Text style={styles.notes} numberOfLines={1}>
-          "{game.notes}"
+      {game.notes && (
+        <Text style={styles.notes} numberOfLines={2}>
+          {game.notes}
         </Text>
-      ) : null}
+      )}
     </Pressable>
   );
 }
@@ -84,107 +119,88 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: Colors.darkCard,
     borderRadius: BorderRadius.lg,
-    padding: Spacing.lg + 2,
+    padding: Spacing.lg,
     marginHorizontal: Spacing.lg,
     marginBottom: Spacing.md,
     borderWidth: 1,
     borderColor: Colors.border,
-    overflow: "hidden",
   },
-  cardPressed: {
-    opacity: 0.85,
-    transform: [{ scale: 0.985 }],
-  },
-  shine: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 1,
-  },
-  header: {
+  cardPressed: { opacity: 0.85, transform: [{ scale: 0.98 }] },
+
+  topRow: {
     flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
     marginBottom: Spacing.md,
   },
-  headerText: {
-    flex: 1,
-    marginLeft: Spacing.md,
-  },
-  sport: {
-    fontSize: FontSize.md,
-    fontWeight: "700",
-    color: Colors.text,
-    letterSpacing: -0.3,
-  },
-  skill: {
-    fontSize: FontSize.xs,
-    color: Colors.textMuted,
-    textTransform: "capitalize",
-    marginTop: 1,
-  },
-  badge: {
-    backgroundColor: Colors.accent + "18",
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs + 1,
-    borderRadius: BorderRadius.full,
-  },
-  badgeFull: {
-    backgroundColor: Colors.error + "18",
-  },
-  badgeText: {
-    fontSize: FontSize.xs,
-    fontWeight: "700",
-    color: Colors.accent,
-  },
-  badgeFullText: {
-    color: Colors.error,
-  },
-  details: {
-    marginBottom: Spacing.md,
-    gap: Spacing.xs + 2,
-  },
+  sportBadge: { flexDirection: "row", alignItems: "center", gap: Spacing.sm },
+  sportEmoji: { fontSize: 20 },
+  sportName: { fontSize: FontSize.lg, fontWeight: "700", color: Colors.text },
+  relTime: { fontSize: FontSize.sm, color: Colors.accent, fontWeight: "600" },
+
   detailRow: {
     flexDirection: "row",
     alignItems: "center",
+    marginBottom: 6,
     gap: Spacing.sm,
   },
-  detailLabel: {
-    fontSize: 13,
-    width: 20,
+  detailIcon: { fontSize: 14, width: 20 },
+  detailText: { fontSize: FontSize.sm, color: Colors.textSecondary, flex: 1 },
+
+  flexBadge: {
+    backgroundColor: Colors.accent + "15",
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.full,
   },
-  detailValue: {
-    fontSize: FontSize.sm,
-    color: Colors.textSecondary,
-  },
-  progressWrap: {
+  flexText: { fontSize: 11, color: Colors.accent, fontWeight: "600" },
+
+  tagsRow: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.sm,
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.md,
   },
-  progressBar: {
-    flex: 1,
-    height: 4,
+  tag: {
     backgroundColor: Colors.darkTertiary,
-    borderRadius: 2,
+    paddingHorizontal: Spacing.sm + 2,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.full,
+  },
+  tagText: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    fontWeight: "500",
+    textTransform: "capitalize",
+  },
+  tagHighlight: { backgroundColor: Colors.accent + "18" },
+  tagHighlightText: { color: Colors.accent },
+
+  bottomRow: { flexDirection: "row", alignItems: "center", gap: Spacing.md },
+  playerInfo: { minWidth: 60 },
+  playerCount: {
+    fontSize: FontSize.lg,
+    fontWeight: "800",
+    color: Colors.text,
+    fontVariant: ["tabular-nums"],
+  },
+  playerMax: { color: Colors.textMuted, fontWeight: "400" },
+  spotsText: { fontSize: 11, color: Colors.textMuted, marginTop: 1 },
+
+  progressBg: {
+    flex: 1,
+    height: 6,
+    backgroundColor: Colors.darkTertiary,
+    borderRadius: 3,
     overflow: "hidden",
   },
-  progressFill: {
-    height: "100%",
-    borderRadius: 2,
-  },
-  playerCount: {
-    fontSize: FontSize.xs,
-    color: Colors.textMuted,
-    fontWeight: "600",
-    fontVariant: ["tabular-nums"],
-    minWidth: 30,
-    textAlign: "right",
-  },
+  progressFill: { height: "100%", borderRadius: 3 },
+
   notes: {
-    fontSize: FontSize.xs,
+    fontSize: FontSize.sm,
     color: Colors.textMuted,
-    marginTop: Spacing.sm + 2,
+    marginTop: Spacing.md,
     fontStyle: "italic",
   },
 });

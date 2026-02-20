@@ -54,7 +54,8 @@ export default function ProfileScreen() {
       .eq("user_id", user.id)
       .eq("status", "joined");
 
-    const participantGameIds = participantRows?.map((p: any) => p.game_id) ?? [];
+    const participantGameIds =
+      participantRows?.map((p: any) => p.game_id) ?? [];
     let joined: GameWithLocation[] = [];
 
     if (participantGameIds.length > 0) {
@@ -68,7 +69,7 @@ export default function ProfileScreen() {
       joined = (data as GameWithLocation[]) ?? [];
     }
 
-    setMyGames([...(hosted as GameWithLocation[] ?? []), ...joined]);
+    setMyGames([...((hosted as GameWithLocation[]) ?? []), ...joined]);
     setGamesLoading(false);
   };
 
@@ -95,70 +96,93 @@ export default function ProfileScreen() {
   }
 
   const sportLabel = SPORTS.find((s) => s.value === profile?.preferred_sport);
-  const skillLabel = SKILL_LEVELS.find((s) => s.value === profile?.skill_level);
-  const locationLabel = UF_LOCATIONS.find((l) => l.id === profile?.favorite_location_id);
+  const skillLabel = SKILL_LEVELS.find(
+    (s) => s.value === profile?.skill_level
+  );
+  const locationLabel = UF_LOCATIONS.find(
+    (l) => l.id === profile?.favorite_location_id
+  );
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Profile header with gradient accent */}
-      <View style={styles.profileCard}>
-        <LinearGradient
-          colors={[...Gradient.brandSubtle]}
-          style={styles.profileGlow}
-        />
-        <Avatar name={profile?.display_name ?? null} size={80} />
-        <Text style={styles.name}>{profile?.display_name ?? "Player"}</Text>
-        <Text style={styles.email}>{user?.email}</Text>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+    >
+      <View style={styles.inner}>
+        {/* Profile header */}
+        <View style={styles.profileCard}>
+          <LinearGradient
+            colors={[...Gradient.brandSubtle]}
+            style={styles.profileGlow}
+          />
+          <Avatar name={profile?.display_name ?? null} size={80} />
+          <Text style={styles.name}>
+            {profile?.display_name ?? "Player"}
+          </Text>
+          <Text style={styles.email}>{user?.email}</Text>
 
-        <View style={styles.tags}>
-          {sportLabel && (
-            <View style={styles.tag}>
-              <Text style={styles.tagText}>
-                {sportLabel.emoji} {sportLabel.label}
-              </Text>
-            </View>
-          )}
-          {skillLabel && (
-            <View style={styles.tag}>
-              <Text style={styles.tagText}>{skillLabel.label}</Text>
-            </View>
-          )}
-          {locationLabel && (
-            <View style={styles.tag}>
-              <Text style={styles.tagText}>📍 {locationLabel.name}</Text>
-            </View>
-          )}
+          <View style={styles.tags}>
+            {sportLabel && (
+              <View style={styles.tag}>
+                <Text style={styles.tagText}>
+                  {sportLabel.emoji} {sportLabel.label}
+                </Text>
+              </View>
+            )}
+            {skillLabel && (
+              <View style={styles.tag}>
+                <Text style={styles.tagText}>{skillLabel.label}</Text>
+              </View>
+            )}
+            {locationLabel && (
+              <View style={styles.tag}>
+                <Text style={styles.tagText}>📍 {locationLabel.name}</Text>
+              </View>
+            )}
+          </View>
         </View>
+
+        {/* My Games */}
+        <Text style={styles.sectionTitle}>My Games</Text>
+        {gamesLoading ? (
+          <ActivityIndicator
+            color={Colors.accent}
+            style={{ marginTop: Spacing.xxl }}
+          />
+        ) : myGames.length === 0 ? (
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyText}>No games yet</Text>
+            <Text style={styles.emptyHint}>
+              Create or join a game to see it here
+            </Text>
+          </View>
+        ) : (
+          myGames.map((game) => <GameCard key={game.id} game={game} />)
+        )}
+
+        {/* Sign Out */}
+        <Pressable
+          onPress={handleSignOut}
+          style={({ pressed }) => [
+            styles.signOutBtn,
+            pressed && { opacity: 0.7 },
+          ]}
+        >
+          <Text style={styles.signOutText}>Sign Out</Text>
+        </Pressable>
       </View>
-
-      {/* My Games */}
-      <Text style={styles.sectionTitle}>My Games</Text>
-      {gamesLoading ? (
-        <ActivityIndicator color={Colors.accent} style={{ marginTop: Spacing.xxl }} />
-      ) : myGames.length === 0 ? (
-        <View style={styles.emptyBox}>
-          <Text style={styles.emptyText}>No games yet</Text>
-          <Text style={styles.emptyHint}>Create or join a game to see it here</Text>
-        </View>
-      ) : (
-        myGames.map((game) => <GameCard key={game.id} game={game} />)
-      )}
-
-      {/* Sign Out */}
-      <Pressable onPress={handleSignOut} style={styles.signOutBtn}>
-        <Text style={styles.signOutText}>Sign Out</Text>
-      </Pressable>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.dark,
-  },
-  content: {
-    paddingBottom: 60,
+  container: { flex: 1, backgroundColor: Colors.dark },
+  content: { paddingBottom: 60 },
+  inner: {
+    maxWidth: 600,
+    width: "100%",
+    alignSelf: "center",
   },
   center: {
     flex: 1,
@@ -166,6 +190,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: Colors.dark,
   },
+
   profileCard: {
     alignItems: "center",
     paddingTop: Spacing.xxxl,
@@ -214,6 +239,7 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     fontWeight: "500",
   },
+
   sectionTitle: {
     fontSize: FontSize.lg,
     fontWeight: "700",
@@ -222,10 +248,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
     letterSpacing: -0.3,
   },
-  emptyBox: {
-    alignItems: "center",
-    paddingVertical: Spacing.xxxl,
-  },
+  emptyBox: { alignItems: "center", paddingVertical: Spacing.xxxl },
   emptyText: {
     fontSize: FontSize.md,
     color: Colors.textSecondary,
@@ -236,6 +259,7 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     marginTop: Spacing.xs,
   },
+
   signOutBtn: {
     marginTop: Spacing.xxxxl,
     alignSelf: "center",

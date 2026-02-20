@@ -47,7 +47,7 @@ export default function MapScreen() {
         showsMyLocationButton
         userInterfaceStyle="dark"
       >
-        {games.map((game) => (
+        {games.filter((g) => g.locations).map((game) => (
           <Marker
             key={game.id}
             coordinate={{

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import {
   View,
   FlatList,
@@ -6,7 +6,6 @@ import {
   StyleSheet,
   RefreshControl,
   ActivityIndicator,
-  Animated,
 } from "react-native";
 import { router } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
@@ -31,8 +30,10 @@ export default function HomeScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.headerArea}>
-        <FeedTabs active={tab} onChange={setTab} />
-        <SportFilterChips selected={sportFilter} onSelect={setSportFilter} />
+        <View style={styles.headerInner}>
+          <FeedTabs active={tab} onChange={setTab} />
+          <SportFilterChips selected={sportFilter} onSelect={setSportFilter} />
+        </View>
       </View>
 
       {loading ? (
@@ -51,7 +52,10 @@ export default function HomeScreen() {
               tintColor={Colors.accent}
             />
           }
-          contentContainerStyle={games.length === 0 ? styles.center : styles.list}
+          style={styles.listWrap}
+          contentContainerStyle={
+            games.length === 0 ? styles.centerList : styles.list
+          }
           ListEmptyComponent={
             <View style={styles.empty}>
               <Text style={styles.emptyIcon}>🏓</Text>
@@ -71,30 +75,23 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.dark,
+  container: { flex: 1, backgroundColor: Colors.dark },
+  headerArea: { paddingTop: Spacing.md },
+  headerInner: {
+    maxWidth: 640,
+    width: "100%",
+    alignSelf: "center",
   },
-  headerArea: {
-    paddingTop: Spacing.md,
+  listWrap: {
+    maxWidth: 640,
+    width: "100%",
+    alignSelf: "center",
   },
-  list: {
-    paddingTop: Spacing.xs,
-    paddingBottom: 100,
-  },
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  empty: {
-    alignItems: "center",
-    paddingTop: 80,
-  },
-  emptyIcon: {
-    fontSize: 56,
-    marginBottom: Spacing.lg,
-  },
+  list: { paddingTop: Spacing.xs, paddingBottom: 100 },
+  centerList: { flex: 1, alignItems: "center", justifyContent: "center" },
+  center: { flex: 1, alignItems: "center", justifyContent: "center" },
+  empty: { alignItems: "center", paddingTop: 80 },
+  emptyIcon: { fontSize: 56, marginBottom: Spacing.lg },
   emptyTitle: {
     fontSize: FontSize.xl,
     fontWeight: "800",
@@ -102,8 +99,5 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
     letterSpacing: -0.5,
   },
-  emptyText: {
-    fontSize: FontSize.sm,
-    color: Colors.textMuted,
-  },
+  emptyText: { fontSize: FontSize.sm, color: Colors.textMuted },
 });
