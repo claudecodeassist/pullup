@@ -14,6 +14,7 @@ import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { useAuth } from "@/providers/AuthProvider";
 import { Button } from "@/components/ui/Button";
+import { ScaleSelector } from "@/components/ui/ScaleSelector";
 import { supabase } from "@/lib/supabase";
 import { copyGameLink } from "@/lib/clipboard";
 import {
@@ -25,8 +26,6 @@ import {
   SPORTS,
   SKILL_LEVELS,
   UF_LOCATIONS,
-  PACE_OPTIONS,
-  DISTANCE_OPTIONS,
   Sport,
   SkillLevel,
   equipmentLabel as getEquipLabel,
@@ -40,30 +39,45 @@ if (Platform.OS !== "web") {
 const TIME_PRESETS = [
   { label: "Now", emoji: "🔥", minutes: 0 },
   { label: "30 min", emoji: "⏱", minutes: 30 },
-  { label: "1 hour", emoji: "🕐", minutes: 60 },
-  { label: "2 hours", emoji: "🕑", minutes: 120 },
+  { label: "1 hr", emoji: "🕐", minutes: 60 },
+  { label: "2 hr", emoji: "🕑", minutes: 120 },
 ];
 
-function crossAlert(title: string, message: string, onOk?: () => void) {
+const DISTANCE_OPTS = [1, 2, 3, 4, 5, 6, 8, 10].map((d) => ({
+  value: d,
+  label: `${d}`,
+}));
+
+const PACE_OPTS = [
+  { value: "very easy", label: "Very Easy" },
+  { value: "easy", label: "Easy" },
+  { value: "moderate", label: "Moderate" },
+  { value: "fast", label: "Fast" },
+  { value: "race", label: "Race" },
+];
+
+function crossAlert(title: string, msg: string, onOk?: () => void) {
   if (Platform.OS === "web") {
-    (window as any).alert(`${title}\n${message}`);
+    (window as any).alert(`${title}\n${msg}`);
     onOk?.();
   } else {
-    Alert.alert(title, message, [{ text: "OK", onPress: onOk }]);
+    Alert.alert(title, msg, [{ text: "OK", onPress: onOk }]);
   }
 }
 
 export default function CreateGameScreen() {
   const { user } = useAuth();
+
+  // Common
   const [sport, setSport] = useState<Sport>("pickleball");
-  const [skillLevel, setSkillLevel] = useState<SkillLevel>("any");
-  const [locationId, setLocationId] = useState<string | null>(null);
   const [maxPlayers, setMaxPlayers] = useState(4);
+  const [skillLevel, setSkillLevel] = useState<SkillLevel>("any");
   const [startsAt, setStartsAt] = useState(new Date(Date.now() + 1800000));
   const [timePreset, setTimePreset] = useState<number | null>(30);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [timeFlexible, setTimeFlexible] = useState(false);
+  const [locationId, setLocationId] = useState<string | null>(null);
   const [courtFlexible, setCourtFlexible] = useState(true);
   const [hasEquipment, setHasEquipment] = useState(false);
   const [extraEquipment, setExtraEquipment] = useState(false);
@@ -71,9 +85,13 @@ export default function CreateGameScreen() {
   const [loading, setLoading] = useState(false);
   const [showMore, setShowMore] = useState(false);
 
-  // Running-specific
+  // Running
   const [distance, setDistance] = useState<number>(3);
   const [pace, setPace] = useState<string>("moderate");
+
+  const isRunning = sport === "running";
+  const isBallSport = !isRunning;
+  const lookingFor = maxPlayers - 1;
 
   const selectTimePreset = (minutes: number) => {
     setTimePreset(minutes);
@@ -85,17 +103,12 @@ export default function CreateGameScreen() {
 
   const toggleTimeFlexible = (v: boolean) => {
     setTimeFlexible(v);
-    if (v) setTimePreset(null); // Clear presets like "any court" clears locations
+    if (v) setTimePreset(null);
   };
-
-  const showsEquipment = sport !== "running";
-  const lookingFor = maxPlayers - 1; // Host is already one of the players
 
   const handleCreate = async () => {
     if (!user) return;
     setLoading(true);
-
-    type GameRow = { id: string };
 
     const { data, error } = await supabase
       .from("games")
@@ -106,37 +119,27 @@ export default function CreateGameScreen() {
         location_id: courtFlexible ? null : locationId,
         starts_at: startsAt.toISOString(),
         max_players: maxPlayers,
-        has_equipment: showsEquipment ? hasEquipment : false,
-        extra_equipment: showsEquipment ? extraEquipment : false,
+        has_equipment: isBallSport ? hasEquipment : false,
+        extra_equipment: isBallSport ? extraEquipment : false,
         time_flexible: timeFlexible,
-        distance_miles: sport === "running" ? distance : null,
-        pace: sport === "running" ? pace : null,
+        distance_miles: isRunning ? distance : null,
+        pace: isRunning ? pace : null,
         notes: notes.trim() || null,
       })
       .select("id")
       .single();
 
     setLoading(false);
+    if (error) { crossAlert("Error", error.message); return; }
 
-    if (error) {
-      crossAlert("Error", error.message);
-      return;
-    }
-
-    const row = data as GameRow | null;
+    const row = data as { id: string } | null;
     if (row) {
-      await supabase
-        .from("game_participants")
+      await supabase.from("game_participants")
         .insert({ game_id: row.id, user_id: user.id, status: "joined" as const });
-
       await copyGameLink(row.id);
-      crossAlert("Game posted!", "Link copied — share it with your group!", () => {
-        router.back();
-      });
+      crossAlert("Game posted!", "Link copied — share it with your group!", () => router.back());
     }
   };
-
-  const eqLabel = getEquipLabel(sport);
 
   const toLocalDatetimeStr = (d: Date) => {
     const pad = (n: number) => n.toString().padStart(2, "0");
@@ -150,7 +153,7 @@ export default function CreateGameScreen() {
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.inner}>
-        {/* ── Sport ── */}
+        {/* ═══ Sport Selector ═══ */}
         <Text style={styles.sectionLabel}>What are you playing?</Text>
         <View style={styles.sportGrid}>
           {SPORTS.map((s) => {
@@ -162,6 +165,7 @@ export default function CreateGameScreen() {
                   setSport(s.value);
                   setHasEquipment(false);
                   setExtraEquipment(false);
+                  setShowMore(false);
                 }}
                 style={({ pressed }) => [
                   styles.sportCard,
@@ -178,101 +182,45 @@ export default function CreateGameScreen() {
                   />
                 )}
                 <Text style={styles.sportEmoji}>{s.emoji}</Text>
-                <Text style={[styles.sportLabel, sel && styles.sportLabelSel]}>
-                  {s.label}
-                </Text>
+                <Text style={[styles.sportLabel, sel && styles.sportLabelSel]}>{s.label}</Text>
               </Pressable>
             );
           })}
         </View>
 
-        {/* Running-specific (always visible when running) */}
-        {sport === "running" && (
+        {/* ═══ PRIMARY FIELDS (sport-specific, always visible) ═══ */}
+
+        {isRunning ? (
           <>
+            {/* Running: Distance + Pace scales */}
             <Text style={styles.sectionLabel}>Distance (miles)</Text>
-            <View style={styles.chipRow}>
-              {DISTANCE_OPTIONS.map((d) => {
-                const sel = distance === d;
-                return (
-                  <Pressable
-                    key={d}
-                    onPress={() => setDistance(d)}
-                    style={[styles.chip, sel && styles.chipSel]}
-                  >
-                    <Text style={[styles.chipText, sel && styles.chipTextSel]}>
-                      {d} mi
-                    </Text>
-                  </Pressable>
-                );
-              })}
+            <View style={styles.scaleWrap}>
+              <ScaleSelector
+                options={DISTANCE_OPTS}
+                selected={distance}
+                onSelect={setDistance}
+                minLabel="Short"
+                maxLabel="Long"
+              />
             </View>
 
             <Text style={styles.sectionLabel}>Pace</Text>
-            <View style={styles.chipRow}>
-              {PACE_OPTIONS.map((p) => {
-                const sel = pace === p.value;
-                return (
-                  <Pressable
-                    key={p.value}
-                    onPress={() => setPace(p.value)}
-                    style={[styles.chip, sel && styles.chipSel]}
-                  >
-                    <Text style={[styles.chipText, sel && styles.chipTextSel]}>
-                      {p.emoji} {p.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+            <View style={styles.scaleWrap}>
+              <ScaleSelector
+                options={PACE_OPTS}
+                selected={pace}
+                onSelect={setPace}
+                minLabel="🚶 Chill"
+                maxLabel="⚡ Fast"
+              />
             </View>
           </>
-        )}
-
-        {/* ── Summary card ── */}
-        <View style={styles.defaultsCard}>
-          <View style={styles.defaultRow}>
-            <Text style={styles.defaultIcon}>👥</Text>
-            <Text style={styles.defaultText}>Looking for {lookingFor} more</Text>
-          </View>
-          <View style={styles.defaultRow}>
-            <Text style={styles.defaultIcon}>⏱</Text>
-            <Text style={styles.defaultText}>
-              {timeFlexible
-                ? "Whenever works"
-                : timePreset === 0
-                  ? "Starting now"
-                  : timePreset !== null
-                    ? `In ${timePreset} min`
-                    : startsAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+        ) : (
+          <>
+            {/* Ball sports: Players + Skill */}
+            <Text style={styles.sectionLabel}>
+              Looking for {lookingFor} more player{lookingFor === 1 ? "" : "s"}
             </Text>
-          </View>
-          <View style={styles.defaultRow}>
-            <Text style={styles.defaultIcon}>📍</Text>
-            <Text style={styles.defaultText}>
-              {courtFlexible ? "Any court" : UF_LOCATIONS.find(l => l.id === locationId)?.name ?? "Any court"}
-            </Text>
-          </View>
-          <View style={styles.defaultRow}>
-            <Text style={styles.defaultIcon}>🎯</Text>
-            <Text style={styles.defaultText}>
-              {skillLevel === "any" ? "All skill levels" : skillLevel}
-            </Text>
-          </View>
-        </View>
-
-        {/* ── Customize (ABOVE post button) ── */}
-        <Pressable
-          onPress={() => setShowMore(!showMore)}
-          style={({ pressed }) => [styles.customizeBtn, pressed && { opacity: 0.7 }]}
-        >
-          <Text style={styles.customizeText}>
-            {showMore ? "▲ Less options" : "▼ Customize details"}
-          </Text>
-        </Pressable>
-
-        {showMore && (
-          <View style={styles.moreSection}>
-            {/* Players */}
-            <Text style={styles.sectionLabel}>Total players (including you)</Text>
             <View style={styles.stepperRow}>
               <Pressable
                 onPress={() => setMaxPlayers(Math.max(2, maxPlayers - 1))}
@@ -281,7 +229,8 @@ export default function CreateGameScreen() {
                 <Text style={styles.stepperBtnText}>−</Text>
               </Pressable>
               <View style={styles.stepperValue}>
-                <Text style={styles.stepperNum}>{maxPlayers}</Text>
+                <Text style={styles.stepperNum}>{lookingFor}</Text>
+                <Text style={styles.stepperUnit}>more</Text>
               </View>
               <Pressable
                 onPress={() => setMaxPlayers(Math.min(20, maxPlayers + 1))}
@@ -291,8 +240,7 @@ export default function CreateGameScreen() {
               </Pressable>
             </View>
 
-            {/* Skill Level */}
-            <Text style={styles.sectionLabel}>Looking for</Text>
+            <Text style={styles.sectionLabel}>Skill level</Text>
             <View style={styles.chipRow}>
               {SKILL_LEVELS.map((s) => {
                 const sel = skillLevel === s.value;
@@ -307,6 +255,46 @@ export default function CreateGameScreen() {
                 );
               })}
             </View>
+          </>
+        )}
+
+        {/* ═══ CUSTOMIZE (sport-appropriate extras) ═══ */}
+        <Pressable
+          onPress={() => setShowMore(!showMore)}
+          style={({ pressed }) => [styles.customizeBtn, pressed && { opacity: 0.7 }]}
+        >
+          <Text style={styles.customizeText}>
+            {showMore ? "▲ Less options" : "▼ Customize details"}
+          </Text>
+        </Pressable>
+
+        {showMore && (
+          <View style={styles.moreSection}>
+
+            {/* Running also needs group size */}
+            {isRunning && (
+              <>
+                <Text style={styles.sectionLabel}>Group size</Text>
+                <View style={styles.stepperRow}>
+                  <Pressable
+                    onPress={() => setMaxPlayers(Math.max(2, maxPlayers - 1))}
+                    style={({ pressed }) => [styles.stepperBtn, pressed && { opacity: 0.6 }]}
+                  >
+                    <Text style={styles.stepperBtnText}>−</Text>
+                  </Pressable>
+                  <View style={styles.stepperValue}>
+                    <Text style={styles.stepperNum}>{lookingFor}</Text>
+                    <Text style={styles.stepperUnit}>more</Text>
+                  </View>
+                  <Pressable
+                    onPress={() => setMaxPlayers(Math.min(20, maxPlayers + 1))}
+                    style={({ pressed }) => [styles.stepperBtn, pressed && { opacity: 0.6 }]}
+                  >
+                    <Text style={styles.stepperBtnText}>+</Text>
+                  </Pressable>
+                </View>
+              </>
+            )}
 
             {/* When */}
             <Text style={styles.sectionLabel}>When</Text>
@@ -346,19 +334,11 @@ export default function CreateGameScreen() {
                   type: "datetime-local",
                   value: toLocalDatetimeStr(startsAt),
                   min: toLocalDatetimeStr(new Date()),
-                  onChange: (e: any) => {
-                    const val = e.target.value;
-                    if (val) setStartsAt(new Date(val));
-                  },
+                  onChange: (e: any) => { const v = e.target.value; if (v) setStartsAt(new Date(v)); },
                   style: {
-                    backgroundColor: Colors.darkCard,
-                    color: Colors.text,
-                    border: `1px solid ${Colors.border}`,
-                    borderRadius: 12,
-                    padding: "12px 16px",
-                    fontSize: 16,
-                    width: "100%",
-                    outline: "none",
+                    backgroundColor: Colors.darkCard, color: Colors.text,
+                    border: `1px solid ${Colors.border}`, borderRadius: 12,
+                    padding: "12px 16px", fontSize: 16, width: "100%", outline: "none",
                   },
                 })}
               </View>
@@ -380,66 +360,49 @@ export default function CreateGameScreen() {
             )}
 
             {showDatePicker && DateTimePicker && (
-              <DateTimePicker
-                value={startsAt}
-                mode="date"
-                minimumDate={new Date()}
-                onChange={(_: any, date: Date | undefined) => {
+              <DateTimePicker value={startsAt} mode="date" minimumDate={new Date()}
+                onChange={(_: any, d: Date | undefined) => {
                   setShowDatePicker(Platform.OS === "ios");
-                  if (date) {
-                    const u = new Date(startsAt);
-                    u.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
-                    setStartsAt(u);
-                  }
+                  if (d) { const u = new Date(startsAt); u.setFullYear(d.getFullYear(), d.getMonth(), d.getDate()); setStartsAt(u); }
                 }}
               />
             )}
             {showTimePicker && DateTimePicker && (
-              <DateTimePicker
-                value={startsAt}
-                mode="time"
-                onChange={(_: any, date: Date | undefined) => {
+              <DateTimePicker value={startsAt} mode="time"
+                onChange={(_: any, d: Date | undefined) => {
                   setShowTimePicker(Platform.OS === "ios");
-                  if (date) {
-                    const u = new Date(startsAt);
-                    u.setHours(date.getHours(), date.getMinutes());
-                    setStartsAt(u);
-                  }
+                  if (d) { const u = new Date(startsAt); u.setHours(d.getHours(), d.getMinutes()); setStartsAt(u); }
                 }}
               />
             )}
 
             <View style={styles.toggleRow}>
               <Text style={styles.toggleLabel}>Flexible on time</Text>
-              <Switch
-                value={timeFlexible}
-                onValueChange={toggleTimeFlexible}
+              <Switch value={timeFlexible} onValueChange={toggleTimeFlexible}
                 trackColor={{ false: Colors.darkTertiary, true: Colors.accent + "60" }}
-                thumbColor={timeFlexible ? Colors.accent : "#636366"}
-              />
+                thumbColor={timeFlexible ? Colors.accent : "#636366"} />
             </View>
 
             {/* Where */}
-            <Text style={styles.sectionLabel}>Where</Text>
+            <Text style={styles.sectionLabel}>
+              {isRunning ? "Meeting point" : "Where"}
+            </Text>
             <View style={styles.toggleRow}>
-              <Text style={styles.toggleLabel}>Any court works</Text>
-              <Switch
-                value={courtFlexible}
+              <Text style={styles.toggleLabel}>
+                {isRunning ? "Flexible on start point" : "Any court works"}
+              </Text>
+              <Switch value={courtFlexible}
                 onValueChange={(v) => { setCourtFlexible(v); if (v) setLocationId(null); }}
                 trackColor={{ false: Colors.darkTertiary, true: Colors.accent + "60" }}
-                thumbColor={courtFlexible ? Colors.accent : "#636366"}
-              />
+                thumbColor={courtFlexible ? Colors.accent : "#636366"} />
             </View>
             {!courtFlexible && (
               <View style={[styles.chipRow, { marginTop: Spacing.sm }]}>
                 {UF_LOCATIONS.map((loc) => {
                   const sel = locationId === loc.id;
                   return (
-                    <Pressable
-                      key={loc.id}
-                      onPress={() => setLocationId(loc.id)}
-                      style={[styles.chip, sel && styles.chipSel]}
-                    >
+                    <Pressable key={loc.id} onPress={() => setLocationId(loc.id)}
+                      style={[styles.chip, sel && styles.chipSel]}>
                       <Text style={[styles.chipText, sel && styles.chipTextSel]}>📍 {loc.name}</Text>
                     </Pressable>
                   );
@@ -447,28 +410,22 @@ export default function CreateGameScreen() {
               </View>
             )}
 
-            {/* Equipment */}
-            {showsEquipment && (
+            {/* Equipment — ball sports only */}
+            {isBallSport && (
               <>
                 <Text style={styles.sectionLabel}>Equipment</Text>
                 <View style={styles.equipCard}>
                   <View style={styles.toggleRow}>
-                    <Text style={styles.toggleLabel}>I have {eqLabel}</Text>
-                    <Switch
-                      value={hasEquipment}
-                      onValueChange={setHasEquipment}
+                    <Text style={styles.toggleLabel}>I have {getEquipLabel(sport)}</Text>
+                    <Switch value={hasEquipment} onValueChange={setHasEquipment}
                       trackColor={{ false: Colors.darkTertiary, true: Colors.accent + "60" }}
-                      thumbColor={hasEquipment ? Colors.accent : "#636366"}
-                    />
+                      thumbColor={hasEquipment ? Colors.accent : "#636366"} />
                   </View>
                   <View style={[styles.toggleRow, { borderBottomWidth: 0 }]}>
                     <Text style={styles.toggleLabel}>Extras to share</Text>
-                    <Switch
-                      value={extraEquipment}
-                      onValueChange={setExtraEquipment}
+                    <Switch value={extraEquipment} onValueChange={setExtraEquipment}
                       trackColor={{ false: Colors.darkTertiary, true: Colors.accent + "60" }}
-                      thumbColor={extraEquipment ? Colors.accent : "#636366"}
-                    />
+                      thumbColor={extraEquipment ? Colors.accent : "#636366"} />
                   </View>
                 </View>
               </>
@@ -478,28 +435,18 @@ export default function CreateGameScreen() {
             <Text style={styles.sectionLabel}>
               Notes <Text style={styles.optional}>(optional)</Text>
             </Text>
-            <TextInput
-              style={styles.notesInput}
-              value={notes}
-              onChangeText={setNotes}
+            <TextInput style={styles.notesInput}
+              value={notes} onChangeText={setNotes}
               placeholder="Anything players should know..."
-              placeholderTextColor={Colors.textMuted}
-              maxLength={200}
-              multiline
-              numberOfLines={3}
+              placeholderTextColor={Colors.textMuted} maxLength={200} multiline numberOfLines={3}
             />
           </View>
         )}
 
-        {/* ── POST button (below customize) ── */}
+        {/* ═══ POST BUTTON ═══ */}
         <View style={styles.submitArea}>
-          <Button
-            title="Post Game"
-            onPress={handleCreate}
-            size="lg"
-            loading={loading}
-            style={{ width: "100%" } as any}
-          />
+          <Button title="Post Game" onPress={handleCreate} size="lg"
+            loading={loading} style={{ width: "100%" } as any} />
         </View>
       </View>
     </ScrollView>
@@ -530,23 +477,22 @@ const styles = StyleSheet.create({
   sportLabel: { fontSize: FontSize.sm, fontWeight: "700", color: Colors.textSecondary },
   sportLabelSel: { color: Colors.text },
 
-  defaultsCard: {
+  scaleWrap: {
     backgroundColor: Colors.darkCard, borderRadius: BorderRadius.lg,
-    padding: Spacing.lg, marginTop: Spacing.xl, marginBottom: Spacing.lg,
-    borderWidth: 1, borderColor: Colors.border, gap: Spacing.sm,
+    padding: Spacing.lg, borderWidth: 1, borderColor: Colors.border,
   },
-  defaultRow: { flexDirection: "row", alignItems: "center", gap: Spacing.sm },
-  defaultIcon: { fontSize: 14, width: 22 },
-  defaultText: { fontSize: FontSize.sm, color: Colors.textSecondary },
 
-  customizeBtn: { alignSelf: "center", paddingVertical: Spacing.sm, paddingHorizontal: Spacing.xl, marginBottom: Spacing.sm },
+  customizeBtn: {
+    alignSelf: "center", paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.xl, marginTop: Spacing.xl,
+  },
   customizeText: { fontSize: FontSize.sm, color: Colors.accent, fontWeight: "600" },
 
-  moreSection: { marginBottom: Spacing.md },
+  moreSection: { marginBottom: Spacing.sm },
 
   stepperRow: {
     flexDirection: "row", alignItems: "center", justifyContent: "center",
-    gap: Spacing.xxl, paddingVertical: Spacing.md,
+    gap: Spacing.xxl, paddingVertical: Spacing.sm,
   },
   stepperBtn: {
     width: 48, height: 48, borderRadius: 24, backgroundColor: Colors.darkCard,
@@ -555,6 +501,7 @@ const styles = StyleSheet.create({
   stepperBtnText: { fontSize: 24, color: Colors.text, fontWeight: "500", lineHeight: 26 },
   stepperValue: { alignItems: "center", minWidth: 60 },
   stepperNum: { fontSize: 36, fontWeight: "800", color: Colors.text, fontVariant: ["tabular-nums"] },
+  stepperUnit: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2 },
 
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: Spacing.sm },
   chip: {
@@ -592,5 +539,5 @@ const styles = StyleSheet.create({
     color: Colors.text, minHeight: 80, textAlignVertical: "top",
   },
 
-  submitArea: { marginTop: Spacing.lg, paddingBottom: Spacing.xxl },
+  submitArea: { marginTop: Spacing.xl, paddingBottom: Spacing.xxl },
 });
