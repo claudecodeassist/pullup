@@ -1,27 +1,40 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
+import { Avatar } from "@/components/ui/Avatar";
 import { Colors, FontSize, Spacing, BorderRadius } from "@/lib/constants";
 import { formatChatTime } from "@/lib/datetime";
 
 interface ChatMessageProps {
   content: string;
   displayName: string | null;
+  avatarUrl?: string | null;
   createdAt: string;
   isOwn: boolean;
 }
 
-export function ChatMessage({ content, displayName, createdAt, isOwn }: ChatMessageProps) {
+export function ChatMessage({ content, displayName, avatarUrl, createdAt, isOwn }: ChatMessageProps) {
   return (
     <View style={[styles.container, isOwn && styles.ownContainer]}>
       {!isOwn && (
-        <Text style={styles.name}>{displayName ?? "Anonymous"}</Text>
+        <View style={styles.row}>
+          <Avatar name={displayName} imageUrl={avatarUrl} size={28} />
+          <View style={styles.contentCol}>
+            <Text style={styles.name}>{displayName ?? "Anonymous"}</Text>
+            <View style={styles.bubble}>
+              <Text style={styles.text}>{content}</Text>
+            </View>
+            <Text style={styles.time}>{formatChatTime(createdAt)}</Text>
+          </View>
+        </View>
       )}
-      <View style={[styles.bubble, isOwn && styles.ownBubble]}>
-        <Text style={[styles.text, isOwn && styles.ownText]}>{content}</Text>
-      </View>
-      <Text style={[styles.time, isOwn && styles.ownTime]}>
-        {formatChatTime(createdAt)}
-      </Text>
+      {isOwn && (
+        <View>
+          <View style={[styles.bubble, styles.ownBubble]}>
+            <Text style={[styles.text, styles.ownText]}>{content}</Text>
+          </View>
+          <Text style={[styles.time, styles.ownTime]}>{formatChatTime(createdAt)}</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -35,11 +48,18 @@ const styles = StyleSheet.create({
   ownContainer: {
     alignItems: "flex-end",
   },
+  row: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: Spacing.sm,
+  },
+  contentCol: {
+    flex: 1,
+  },
   name: {
     fontSize: FontSize.xs,
     color: Colors.textMuted,
     marginBottom: 2,
-    marginLeft: Spacing.xs,
   },
   bubble: {
     backgroundColor: Colors.darkTertiary,
@@ -62,10 +82,9 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: Colors.textMuted,
     marginTop: 2,
-    marginLeft: Spacing.xs,
   },
   ownTime: {
     marginRight: Spacing.xs,
-    marginLeft: 0,
+    textAlign: "right",
   },
 });

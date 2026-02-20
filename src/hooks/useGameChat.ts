@@ -6,7 +6,7 @@ interface ChatMessage {
   content: string;
   user_id: string;
   created_at: string;
-  profiles: { display_name: string | null } | null;
+  profiles: { display_name: string | null; avatar_url: string | null } | null;
 }
 
 export function useGameChat(gameId: string) {
@@ -16,7 +16,7 @@ export function useGameChat(gameId: string) {
   const fetchMessages = useCallback(async () => {
     const { data } = await supabase
       .from("messages")
-      .select("id, content, user_id, created_at, profiles(display_name)")
+      .select("id, content, user_id, created_at, profiles(display_name, avatar_url)")
       .eq("game_id", gameId)
       .order("created_at", { ascending: true });
 
@@ -41,7 +41,7 @@ export function useGameChat(gameId: string) {
           // Fetch the complete message with profile
           const { data } = await supabase
             .from("messages")
-            .select("id, content, user_id, created_at, profiles(display_name)")
+            .select("id, content, user_id, created_at, profiles(display_name, avatar_url)")
             .eq("id", payload.new.id)
             .single();
 

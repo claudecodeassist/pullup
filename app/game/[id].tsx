@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, createElement, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import {
   Platform,
   ActivityIndicator,
   Pressable,
+  Switch,
+  TextInput,
 } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
@@ -23,14 +25,69 @@ import { ChatInput } from "@/components/game/ChatInput";
 import { copyGameLink } from "@/lib/clipboard";
 import { formatGameTime, formatRelative } from "@/lib/datetime";
 import { supabase } from "@/lib/supabase";
-import { Colors, Gradient, FontSize, Spacing, BorderRadius, sportInfo, equipmentLabel as getEquipLabel } from "@/lib/constants";
+import {
+  Colors,
+  Gradient,
+  FontSize,
+  Spacing,
+  BorderRadius,
+  SKILL_LEVELS,
+  UF_LOCATIONS,
+  SkillLevel,
+  sportInfo,
+  equipmentLabel as getEquipLabel,
+} from "@/lib/constants";
+
+let DateTimePicker: any = null;
+if (Platform.OS !== "web") {
+  DateTimePicker = require("@react-native-community/datetimepicker").default;
+}
+
+function crossAlert(title: string, msg: string, onOk?: () => void) {
+  if (Platform.OS === "web") {
+    (window as any).alert(`${title}\n${msg}`);
+    onOk?.();
+  } else {
+    Alert.alert(title, msg, [{ text: "OK", onPress: onOk }]);
+  }
+}
+
+function crossConfirm(title: string, msg: string, onYes: () => void) {
+  if (Platform.OS === "web") {
+    if ((window as any).confirm(`${title}\n${msg}`)) onYes();
+  } else {
+    Alert.alert(title, msg, [
+      { text: "No" },
+      { text: "Yes", style: "destructive", onPress: onYes },
+    ]);
+  }
+}
 
 export default function GameDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
   const { game, participants, loading, refresh } = useGame(id!);
   const { messages, sendMessage } = useGameChat(id!);
-  const [showChat, setShowChat] = useState(false);
+  const chatListRef = useRef<FlatList>(null);
+
+  // Edit mode state
+  const [editing, setEditing] = useState(false);
+  const [editSkill, setEditSkill] = useState<SkillLevel>("any");
+  const [editMaxPlayers, setEditMaxPlayers] = useState(4);
+  const [editStartsAt, setEditStartsAt] = useState(new Date());
+  const [editLocationId, setEditLocationId] = useState<string | null>(null);
+  const [editNotes, setEditNotes] = useState("");
+  const [editTimeFlexible, setEditTimeFlexible] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  // Scroll chat to bottom when new messages arrive
+  useEffect(() => {
+    if (messages.length > 0) {
+      setTimeout(() => chatListRef.current?.scrollToEnd({ animated: true }), 100);
+    }
+  }, [messages.length]);
 
   if (loading || !game) {
     return (
@@ -48,34 +105,54 @@ export default function GameDetailScreen() {
     game.max_players > 0 ? game.current_players / game.max_players : 0;
 
   const si = sportInfo(game.sport);
+  const canChat = hasJoined || isHost;
+
+  const startEdit = () => {
+    setEditSkill((game.skill_level as SkillLevel) ?? "any");
+    setEditMaxPlayers(game.max_players);
+    setEditStartsAt(new Date(game.starts_at));
+    setEditLocationId(game.location_id);
+    setEditNotes(game.notes ?? "");
+    setEditTimeFlexible(game.time_flexible ?? false);
+    setEditing(true);
+  };
+
+  const saveEdit = async () => {
+    setSaving(true);
+    await supabase
+      .from("games")
+      .update({
+        skill_level: editSkill,
+        max_players: editMaxPlayers,
+        starts_at: editStartsAt.toISOString(),
+        location_id: editLocationId,
+        notes: editNotes.trim() || null,
+        time_flexible: editTimeFlexible,
+      })
+      .eq("id", game.id);
+    setSaving(false);
+    setEditing(false);
+    refresh();
+  };
 
   const handleCancel = () => {
-    if (Platform.OS === "web") {
-      if ((window as any).confirm("Cancel Game\nAre you sure you want to cancel this game?")) {
-        supabase.from("games").update({ status: "cancelled" as const }).eq("id", game.id).then(() => router.back());
-      }
-    } else {
-      Alert.alert("Cancel Game", "Are you sure you want to cancel this game?", [
-        { text: "No" },
-        {
-          text: "Yes, cancel",
-          style: "destructive",
-          onPress: async () => {
-            await supabase.from("games").update({ status: "cancelled" as const }).eq("id", game.id);
-            router.back();
-          },
-        },
-      ]);
-    }
+    crossConfirm("Cancel Game", "Are you sure you want to cancel this game?", async () => {
+      await supabase
+        .from("games")
+        .update({ status: "cancelled" as const })
+        .eq("id", game.id);
+      router.back();
+    });
   };
 
   const handleShare = async () => {
     await copyGameLink(game.id);
-    if (Platform.OS === "web") {
-      (window as any).alert("Link copied to clipboard!");
-    } else {
-      Alert.alert("Copied!", "Game link copied to clipboard");
-    }
+    crossAlert("Copied!", "Game link copied to clipboard");
+  };
+
+  const toLocalDatetimeStr = (d: Date) => {
+    const pad = (n: number) => n.toString().padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   };
 
   return (
@@ -83,68 +160,76 @@ export default function GameDetailScreen() {
       style={styles.container}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      {!showChat ? (
-        <ScrollView
-          contentContainerStyle={styles.scroll}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.inner}>
-            {/* Hero */}
-            <View style={styles.hero}>
-              <LinearGradient
-                colors={[...Gradient.brandSubtle]}
-                style={StyleSheet.absoluteFill}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              />
-              <Text style={styles.heroEmoji}>{si.emoji}</Text>
-              <Text style={styles.heroTitle}>{si.label}</Text>
-              <Text style={styles.heroTime}>
-                {formatRelative(game.starts_at)}
-              </Text>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.inner}>
+          {/* Hero */}
+          <View style={styles.hero}>
+            <LinearGradient
+              colors={[...Gradient.brandSubtle]}
+              style={StyleSheet.absoluteFill}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            />
+            <Text style={styles.heroEmoji}>{si.emoji}</Text>
+            <Text style={styles.heroTitle}>{si.label}</Text>
+            <Text style={styles.heroTime}>
+              {formatRelative(game.starts_at)}
+            </Text>
 
-              {/* Player count */}
-              <View style={styles.countRow}>
-                <Text style={styles.countNum}>{game.current_players}</Text>
-                <Text style={styles.countSlash}>/</Text>
-                <Text style={styles.countMax}>{game.max_players}</Text>
-              </View>
-              <Text style={styles.countHint}>
-                {isFull
-                  ? "Game is full"
-                  : `${spotsLeft} spot${spotsLeft === 1 ? "" : "s"} left`}
-              </Text>
-
-              {/* Progress */}
-              <View style={styles.progressBg}>
-                <LinearGradient
-                  colors={
-                    isFull ? ["#FF453A", "#FF6961"] : [...Gradient.brand]
-                  }
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={[
-                    styles.progressFill,
-                    {
-                      width: `${Math.min(progress * 100, 100)}%` as any,
-                    },
-                  ]}
-                />
-              </View>
+            {/* Player count */}
+            <View style={styles.countRow}>
+              <Text style={styles.countNum}>{game.current_players}</Text>
+              <Text style={styles.countSlash}>/</Text>
+              <Text style={styles.countMax}>{game.max_players}</Text>
             </View>
+            <Text style={styles.countHint}>
+              {isFull
+                ? "Game is full"
+                : `${spotsLeft} spot${spotsLeft === 1 ? "" : "s"} left`}
+            </Text>
 
-            {/* Detail card */}
+            {/* Progress */}
+            <View style={styles.progressBg}>
+              <LinearGradient
+                colors={
+                  isFull ? ["#FF453A", "#FF6961"] : [...Gradient.brand]
+                }
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={[
+                  styles.progressFill,
+                  {
+                    width: `${Math.min(progress * 100, 100)}%` as any,
+                  },
+                ]}
+              />
+            </View>
+          </View>
+
+          {/* Detail card */}
+          {!editing ? (
             <View style={styles.detailCard}>
-              {game.sport === "running" && (game.distance_miles || game.pace) && (
-                <DetailRow
-                  label="Run"
-                  value={[
-                    game.distance_miles ? `${game.distance_miles} mi` : null,
-                    game.pace ? `${game.pace} pace` : null,
-                  ].filter(Boolean).join(" · ")}
-                />
-              )}
-              <DetailRow label="Where" value={game.locations?.name ?? "Any court"} />
+              {game.sport === "running" &&
+                (game.distance_miles || game.pace) && (
+                  <DetailRow
+                    label="Run"
+                    value={[
+                      game.distance_miles
+                        ? `${game.distance_miles} mi`
+                        : null,
+                      game.pace ? `${game.pace} pace` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  />
+                )}
+              <DetailRow
+                label="Where"
+                value={game.locations?.name ?? "Any court"}
+              />
               <DetailRow
                 label="When"
                 value={formatGameTime(game.starts_at)}
@@ -165,7 +250,7 @@ export default function GameDetailScreen() {
                     game.has_equipment
                       ? `${si.emoji} Has ${getEquipLabel(game.sport)}`
                       : null,
-                    game.extra_equipment ? "🎁 Extras to share" : null,
+                    game.extra_equipment ? "Extras to share" : null,
                   ]
                     .filter(Boolean)
                     .join("  ·  ")}
@@ -173,68 +258,314 @@ export default function GameDetailScreen() {
                 />
               )}
             </View>
+          ) : (
+            /* ═══ EDIT MODE ═══ */
+            <View style={styles.editCard}>
+              <Text style={styles.editTitle}>Edit Game</Text>
 
-            {game.notes && (
-              <View style={styles.notesCard}>
-                <Text style={styles.notesLabel}>Notes</Text>
-                <Text style={styles.notesText}>{game.notes}</Text>
+              <Text style={styles.editLabel}>Skill Level</Text>
+              <View style={styles.chipRow}>
+                {SKILL_LEVELS.map((s) => {
+                  const sel = editSkill === s.value;
+                  return (
+                    <Pressable
+                      key={s.value}
+                      onPress={() => setEditSkill(s.value)}
+                      style={[styles.chip, sel && styles.chipSel]}
+                    >
+                      <Text
+                        style={[
+                          styles.chipText,
+                          sel && styles.chipTextSel,
+                        ]}
+                      >
+                        {s.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
               </View>
-            )}
 
-            {/* Actions */}
-            <View style={styles.actions}>
-              <JoinButton
-                gameId={game.id}
-                userId={user?.id ?? ""}
-                hasJoined={hasJoined}
-                isFull={isFull}
-                isHost={isHost}
-                onToggle={refresh}
-              />
-            </View>
+              <Text style={styles.editLabel}>Max Players</Text>
+              <View style={styles.stepperRow}>
+                <Pressable
+                  onPress={() =>
+                    setEditMaxPlayers(Math.max(2, editMaxPlayers - 1))
+                  }
+                  style={({ pressed }) => [
+                    styles.stepperBtn,
+                    pressed && { opacity: 0.6 },
+                  ]}
+                >
+                  <Text style={styles.stepperBtnText}>−</Text>
+                </Pressable>
+                <Text style={styles.stepperNum}>{editMaxPlayers}</Text>
+                <Pressable
+                  onPress={() =>
+                    setEditMaxPlayers(Math.min(20, editMaxPlayers + 1))
+                  }
+                  style={({ pressed }) => [
+                    styles.stepperBtn,
+                    pressed && { opacity: 0.6 },
+                  ]}
+                >
+                  <Text style={styles.stepperBtnText}>+</Text>
+                </Pressable>
+              </View>
 
-            <View style={styles.secondaryRow}>
-              <ActionChip label="💬 Chat" onPress={() => setShowChat(true)} />
-              <ActionChip label="🔗 Share" onPress={handleShare} />
-              {isHost && (
-                <ActionChip label="Cancel" onPress={handleCancel} danger />
+              <Text style={styles.editLabel}>When</Text>
+              {Platform.OS === "web" ? (
+                <View style={{ marginBottom: Spacing.md }}>
+                  {createElement("input", {
+                    type: "datetime-local",
+                    value: toLocalDatetimeStr(editStartsAt),
+                    onChange: (e: any) => {
+                      if (e.target.value)
+                        setEditStartsAt(new Date(e.target.value));
+                    },
+                    style: {
+                      backgroundColor: Colors.darkCard,
+                      color: Colors.text,
+                      border: `1px solid ${Colors.border}`,
+                      borderRadius: 12,
+                      padding: "12px 16px",
+                      fontSize: 16,
+                      width: "100%",
+                      outline: "none",
+                    },
+                  })}
+                </View>
+              ) : (
+                <View style={styles.dateRow}>
+                  <Pressable
+                    onPress={() => setShowDatePicker(true)}
+                    style={styles.datePill}
+                  >
+                    <Text style={styles.datePillText}>
+                      {editStartsAt.toLocaleDateString(undefined, {
+                        weekday: "short",
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setShowTimePicker(true)}
+                    style={styles.datePill}
+                  >
+                    <Text style={styles.datePillText}>
+                      {editStartsAt.toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </Text>
+                  </Pressable>
+                </View>
               )}
-            </View>
+              {showDatePicker && DateTimePicker && (
+                <DateTimePicker
+                  value={editStartsAt}
+                  mode="date"
+                  minimumDate={new Date()}
+                  onChange={(_: any, d: Date | undefined) => {
+                    setShowDatePicker(Platform.OS === "ios");
+                    if (d) {
+                      const u = new Date(editStartsAt);
+                      u.setFullYear(
+                        d.getFullYear(),
+                        d.getMonth(),
+                        d.getDate()
+                      );
+                      setEditStartsAt(u);
+                    }
+                  }}
+                />
+              )}
+              {showTimePicker && DateTimePicker && (
+                <DateTimePicker
+                  value={editStartsAt}
+                  mode="time"
+                  onChange={(_: any, d: Date | undefined) => {
+                    setShowTimePicker(Platform.OS === "ios");
+                    if (d) {
+                      const u = new Date(editStartsAt);
+                      u.setHours(d.getHours(), d.getMinutes());
+                      setEditStartsAt(u);
+                    }
+                  }}
+                />
+              )}
+              <View style={styles.toggleRow}>
+                <Text style={styles.toggleLabel}>Flexible on time</Text>
+                <Switch
+                  value={editTimeFlexible}
+                  onValueChange={setEditTimeFlexible}
+                  trackColor={{
+                    false: Colors.darkTertiary,
+                    true: Colors.accent + "60",
+                  }}
+                  thumbColor={
+                    editTimeFlexible ? Colors.accent : "#636366"
+                  }
+                />
+              </View>
 
-            <RosterList participants={participants} hostId={game.host_id} />
+              <Text style={styles.editLabel}>Location</Text>
+              <View style={styles.chipRow}>
+                <Pressable
+                  onPress={() => setEditLocationId(null)}
+                  style={[
+                    styles.chip,
+                    editLocationId === null && styles.chipSel,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.chipText,
+                      editLocationId === null && styles.chipTextSel,
+                    ]}
+                  >
+                    Any
+                  </Text>
+                </Pressable>
+                {UF_LOCATIONS.map((loc) => {
+                  const sel = editLocationId === loc.id;
+                  return (
+                    <Pressable
+                      key={loc.id}
+                      onPress={() => setEditLocationId(loc.id)}
+                      style={[styles.chip, sel && styles.chipSel]}
+                    >
+                      <Text
+                        style={[
+                          styles.chipText,
+                          sel && styles.chipTextSel,
+                        ]}
+                      >
+                        {loc.name}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <Text style={styles.editLabel}>Notes</Text>
+              <TextInput
+                style={styles.notesInput}
+                value={editNotes}
+                onChangeText={setEditNotes}
+                placeholder="Anything players should know..."
+                placeholderTextColor={Colors.textMuted}
+                maxLength={200}
+                multiline
+                numberOfLines={3}
+              />
+
+              <View style={styles.editActions}>
+                <Pressable
+                  onPress={() => setEditing(false)}
+                  style={({ pressed }) => [
+                    styles.editCancelBtn,
+                    pressed && { opacity: 0.7 },
+                  ]}
+                >
+                  <Text style={styles.editCancelText}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  onPress={saveEdit}
+                  style={({ pressed }) => [
+                    styles.editSaveBtn,
+                    pressed && { opacity: 0.7 },
+                  ]}
+                >
+                  <Text style={styles.editSaveText}>
+                    {saving ? "Saving..." : "Save Changes"}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          )}
+
+          {game.notes && !editing && (
+            <View style={styles.notesCard}>
+              <Text style={styles.notesLabel}>Notes</Text>
+              <Text style={styles.notesText}>{game.notes}</Text>
+            </View>
+          )}
+
+          {/* Actions */}
+          <View style={styles.actions}>
+            <JoinButton
+              gameId={game.id}
+              userId={user?.id ?? ""}
+              hasJoined={hasJoined}
+              isFull={isFull}
+              isHost={isHost}
+              onToggle={refresh}
+            />
           </View>
-        </ScrollView>
-      ) : (
-        <View style={styles.chatContainer}>
-          <View style={styles.chatHeader}>
-            <Pressable
-              onPress={() => setShowChat(false)}
-              style={({ pressed }) => [pressed && { opacity: 0.7 }]}
-            >
-              <Text style={styles.chatBack}>← Back to details</Text>
-            </Pressable>
-          </View>
-          <FlatList
-            data={messages}
-            keyExtractor={(m) => m.id}
-            renderItem={({ item }) => (
-              <ChatMessage
-                content={item.content}
-                displayName={item.profiles?.display_name ?? null}
-                createdAt={item.created_at}
-                isOwn={item.user_id === user?.id}
+
+          <View style={styles.secondaryRow}>
+            <ActionChip label="🔗 Share" onPress={handleShare} />
+            {isHost && !editing && (
+              <ActionChip label="✏️ Edit" onPress={startEdit} />
+            )}
+            {isHost && (
+              <ActionChip
+                label="Cancel Game"
+                onPress={handleCancel}
+                danger
               />
             )}
-            contentContainerStyle={styles.chatList}
-          />
-          <ChatInput
-            onSend={(content) => {
-              if (user) sendMessage(user.id, content);
-            }}
-            disabled={!hasJoined && !isHost}
-          />
+          </View>
+
+          <RosterList participants={participants} hostId={game.host_id} />
+
+          {/* ═══ INLINE CHAT ═══ */}
+          {canChat && (
+            <View style={styles.chatSection}>
+              <Text style={styles.chatTitle}>
+                Chat ({messages.length})
+              </Text>
+              {messages.length === 0 ? (
+                <Text style={styles.chatEmpty}>
+                  No messages yet — say hi!
+                </Text>
+              ) : (
+                <FlatList
+                  ref={chatListRef}
+                  data={messages}
+                  keyExtractor={(m) => m.id}
+                  renderItem={({ item }) => (
+                    <ChatMessage
+                      content={item.content}
+                      displayName={item.profiles?.display_name ?? null}
+                      avatarUrl={item.profiles?.avatar_url ?? null}
+                      createdAt={item.created_at}
+                      isOwn={item.user_id === user?.id}
+                    />
+                  )}
+                  style={styles.chatList}
+                  scrollEnabled={false}
+                />
+              )}
+              <ChatInput
+                onSend={(content) => {
+                  if (user) sendMessage(user.id, content);
+                }}
+              />
+            </View>
+          )}
+
+          {!canChat && (
+            <View style={styles.chatLockedBox}>
+              <Text style={styles.chatLockedText}>
+                Join to see the chat
+              </Text>
+            </View>
+          )}
         </View>
-      )}
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -255,7 +586,12 @@ function DetailRow({
     <View style={[detailStyles.row, last && { borderBottomWidth: 0 }]}>
       <Text style={detailStyles.label}>{label}</Text>
       <View style={detailStyles.valueWrap}>
-        <Text style={[detailStyles.value, label === "Level" && { textTransform: "capitalize" }]}>
+        <Text
+          style={[
+            detailStyles.value,
+            label === "Level" && { textTransform: "capitalize" },
+          ]}
+        >
           {value}
         </Text>
         {badge && (
@@ -303,16 +639,35 @@ const detailStyles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.border + "40",
   },
-  label: { fontSize: FontSize.sm, color: Colors.textMuted, fontWeight: "500" },
-  valueWrap: { flexDirection: "row", alignItems: "center", gap: Spacing.sm, flex: 1, justifyContent: "flex-end" },
-  value: { fontSize: FontSize.sm, color: Colors.text, fontWeight: "600", textAlign: "right" },
+  label: {
+    fontSize: FontSize.sm,
+    color: Colors.textMuted,
+    fontWeight: "500",
+  },
+  valueWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    flex: 1,
+    justifyContent: "flex-end",
+  },
+  value: {
+    fontSize: FontSize.sm,
+    color: Colors.text,
+    fontWeight: "600",
+    textAlign: "right",
+  },
   badge: {
     backgroundColor: Colors.accent + "15",
     paddingHorizontal: Spacing.sm,
     paddingVertical: 2,
     borderRadius: BorderRadius.full,
   },
-  badgeText: { fontSize: 11, color: Colors.accent, fontWeight: "600" },
+  badgeText: {
+    fontSize: 11,
+    color: Colors.accent,
+    fontWeight: "600",
+  },
 });
 
 const actionStyles = StyleSheet.create({
@@ -324,7 +679,11 @@ const actionStyles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  text: { fontSize: FontSize.sm, color: Colors.text, fontWeight: "500" },
+  text: {
+    fontSize: FontSize.sm,
+    color: Colors.text,
+    fontWeight: "500",
+  },
 });
 
 const styles = StyleSheet.create({
@@ -429,7 +788,11 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginBottom: Spacing.sm,
   },
-  notesText: { fontSize: FontSize.sm, color: Colors.textSecondary, lineHeight: 20 },
+  notesText: {
+    fontSize: FontSize.sm,
+    color: Colors.textSecondary,
+    lineHeight: 20,
+  },
 
   /* Actions */
   actions: { marginBottom: Spacing.lg },
@@ -440,17 +803,191 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
   },
 
-  /* Chat */
-  chatContainer: { flex: 1 },
-  chatHeader: {
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-    padding: Spacing.md,
+  /* Edit mode */
+  editCard: {
+    backgroundColor: Colors.darkCard,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    marginBottom: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.accent + "40",
   },
-  chatBack: {
+  editTitle: {
+    fontSize: FontSize.lg,
+    fontWeight: "700",
     color: Colors.accent,
+    marginBottom: Spacing.lg,
+  },
+  editLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: Colors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.sm,
+  },
+  chipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: Spacing.sm,
+  },
+  chip: {
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm + 2,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.darkElevated,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  chipSel: {
+    backgroundColor: Colors.accent + "18",
+    borderColor: Colors.accent + "80",
+  },
+  chipText: {
     fontSize: FontSize.sm,
+    color: Colors.textSecondary,
+    fontWeight: "500",
+  },
+  chipTextSel: {
+    color: Colors.accent,
     fontWeight: "600",
   },
-  chatList: { flexGrow: 1, paddingVertical: Spacing.md },
+  stepperRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.xxl,
+    paddingVertical: Spacing.sm,
+  },
+  stepperBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.darkElevated,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepperBtnText: {
+    fontSize: 22,
+    color: Colors.text,
+    fontWeight: "500",
+    lineHeight: 24,
+  },
+  stepperNum: {
+    fontSize: 28,
+    fontWeight: "800",
+    color: Colors.text,
+    fontVariant: ["tabular-nums"],
+  },
+  dateRow: {
+    flexDirection: "row",
+    gap: Spacing.md,
+    marginBottom: Spacing.sm,
+  },
+  datePill: {
+    flex: 1,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.darkElevated,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: "center",
+  },
+  datePillText: {
+    color: Colors.text,
+    fontSize: FontSize.sm,
+    fontWeight: "500",
+  },
+  toggleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: Spacing.md,
+  },
+  toggleLabel: {
+    fontSize: FontSize.md,
+    color: Colors.text,
+    fontWeight: "500",
+    flex: 1,
+  },
+  notesInput: {
+    backgroundColor: Colors.darkElevated,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    fontSize: FontSize.md,
+    color: Colors.text,
+    minHeight: 70,
+    textAlignVertical: "top",
+  },
+  editActions: {
+    flexDirection: "row",
+    gap: Spacing.md,
+    marginTop: Spacing.xl,
+  },
+  editCancelBtn: {
+    flex: 1,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: "center",
+  },
+  editCancelText: {
+    color: Colors.textSecondary,
+    fontWeight: "600",
+    fontSize: FontSize.sm,
+  },
+  editSaveBtn: {
+    flex: 1,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.accent,
+    alignItems: "center",
+  },
+  editSaveText: {
+    color: Colors.dark,
+    fontWeight: "700",
+    fontSize: FontSize.sm,
+  },
+
+  /* Chat */
+  chatSection: {
+    marginTop: Spacing.xl,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    paddingTop: Spacing.lg,
+  },
+  chatTitle: {
+    fontSize: FontSize.md,
+    fontWeight: "700",
+    color: Colors.text,
+    marginBottom: Spacing.md,
+  },
+  chatEmpty: {
+    fontSize: FontSize.sm,
+    color: Colors.textMuted,
+    textAlign: "center",
+    paddingVertical: Spacing.xxl,
+  },
+  chatList: {
+    marginBottom: Spacing.sm,
+  },
+  chatLockedBox: {
+    marginTop: Spacing.xl,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    paddingVertical: Spacing.xxl,
+    alignItems: "center",
+  },
+  chatLockedText: {
+    fontSize: FontSize.sm,
+    color: Colors.textMuted,
+    fontWeight: "500",
+  },
 });

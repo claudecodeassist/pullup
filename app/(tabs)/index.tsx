@@ -11,7 +11,6 @@ import { router } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
 import { useGames } from "@/hooks/useGames";
 import { GameCard } from "@/components/game/GameCard";
-import { ChatPreview } from "@/components/game/ChatPreview";
 import { FeedTabs } from "@/components/feed/FeedTabs";
 import { SportFilterChips } from "@/components/feed/SportFilterChips";
 import { FAB } from "@/components/ui/FAB";
@@ -30,10 +29,7 @@ export default function HomeScreen() {
   });
 
   const renderItem = ({ item }: { item: GameWithLocation }) => (
-    <View>
-      <GameCard game={item} />
-      <ChatPreview gameId={item.id} />
-    </View>
+    <GameCard game={item} />
   );
 
   return (
