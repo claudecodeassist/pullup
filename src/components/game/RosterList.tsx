@@ -1,11 +1,12 @@
 import React from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet, Pressable } from "react-native";
+import { router } from "expo-router";
 import { Colors, FontSize, Spacing } from "@/lib/constants";
 import { Avatar } from "@/components/ui/Avatar";
 
 interface Participant {
   user_id: string;
-  profiles: { display_name: string | null } | null;
+  profiles: { display_name: string | null; avatar_url: string | null } | null;
 }
 
 interface RosterListProps {
@@ -20,8 +21,16 @@ export function RosterList({ participants, hostId }: RosterListProps) {
         Players ({participants.length})
       </Text>
       {participants.map((p) => (
-        <View key={p.user_id} style={styles.row}>
-          <Avatar name={p.profiles?.display_name ?? null} size={32} />
+        <Pressable
+          key={p.user_id}
+          onPress={() => router.push(`/player/${p.user_id}`)}
+          style={({ pressed }) => [styles.row, pressed && { opacity: 0.7 }]}
+        >
+          <Avatar
+            name={p.profiles?.display_name ?? null}
+            imageUrl={p.profiles?.avatar_url}
+            size={32}
+          />
           <Text style={styles.name}>
             {p.profiles?.display_name ?? "Anonymous"}
           </Text>
@@ -30,7 +39,8 @@ export function RosterList({ participants, hostId }: RosterListProps) {
               <Text style={styles.hostText}>HOST</Text>
             </View>
           )}
-        </View>
+          <Text style={styles.chevron}>{"\u203A"}</Text>
+        </Pressable>
       ))}
     </View>
   );
@@ -69,5 +79,10 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "700",
     color: Colors.accent,
+  },
+  chevron: {
+    fontSize: 20,
+    color: Colors.textMuted,
+    marginLeft: Spacing.sm,
   },
 });

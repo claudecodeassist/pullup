@@ -54,7 +54,8 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   contentCol: {
-    flex: 1,
+    flexShrink: 1,
+    maxWidth: "80%",
   },
   name: {
     fontSize: FontSize.xs,
@@ -66,7 +67,6 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.lg,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
-    maxWidth: "80%",
   },
   ownBubble: {
     backgroundColor: Colors.accent,
@@ -74,6 +74,7 @@ const styles = StyleSheet.create({
   text: {
     fontSize: FontSize.sm,
     color: Colors.text,
+    lineHeight: 20,
   },
   ownText: {
     color: Colors.dark,

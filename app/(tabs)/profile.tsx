@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Pressable,
   Platform,
+  Modal,
 } from "react-native";
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
@@ -16,6 +17,8 @@ import { useAuth } from "@/providers/AuthProvider";
 import { useProfile } from "@/hooks/useProfile";
 import { Avatar } from "@/components/ui/Avatar";
 import { GameCard } from "@/components/game/GameCard";
+import { useFriends } from "@/hooks/useFriends";
+import QRCode from "react-native-qrcode-svg";
 import { supabase } from "@/lib/supabase";
 import {
   Colors,
@@ -26,6 +29,7 @@ import {
   SPORTS,
   SKILL_LEVELS,
   UF_LOCATIONS,
+  APP_URL,
 } from "@/lib/constants";
 import type { GameWithLocation } from "@/types/database";
 
@@ -36,15 +40,48 @@ export default function ProfileScreen() {
   const [gamesLoading, setGamesLoading] = useState(true);
   const [editingName, setEditingName] = useState(false);
   const [newName, setNewName] = useState("");
+  const [hostedCount, setHostedCount] = useState(0);
+  const [joinedCount, setJoinedCount] = useState(0);
+  const [showShareQR, setShowShareQR] = useState(false);
+  const [friendEmail, setFriendEmail] = useState("");
+  const [friendError, setFriendError] = useState<string | null>(null);
+  const [friendSuccess, setFriendSuccess] = useState<string | null>(null);
+  const [addingFriend, setAddingFriend] = useState(false);
+  const {
+    friends,
+    incomingRequests,
+    fetchFriends,
+    sendRequest,
+    acceptRequest,
+    declineRequest,
+    removeFriend,
+  } = useFriends(user?.id);
 
   useEffect(() => {
     if (user) {
       fetchProfile();
       fetchMyGames();
+      fetchStats();
+      if (!isGuest) fetchFriends();
     } else {
       setGamesLoading(false);
     }
   }, [user?.id]);
+
+  const fetchStats = async () => {
+    if (!user) return;
+    const { count: hosted } = await supabase
+      .from("games")
+      .select("*", { count: "exact", head: true })
+      .eq("host_id", user.id);
+    const { count: joined } = await supabase
+      .from("game_participants")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .eq("status", "joined");
+    setHostedCount(hosted ?? 0);
+    setJoinedCount(joined ?? 0);
+  };
 
   const fetchMyGames = async () => {
     if (!user) return;
@@ -233,6 +270,18 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        {/* Stats */}
+        <View style={styles.statsRow}>
+          <View style={styles.statCard}>
+            <Text style={styles.statNum}>{hostedCount}</Text>
+            <Text style={styles.statLabel}>Hosted</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statNum}>{joinedCount}</Text>
+            <Text style={styles.statLabel}>Joined</Text>
+          </View>
+        </View>
+
         {/* My Games */}
         <Text style={styles.sectionTitle}>My Games</Text>
         {gamesLoading ? (
@@ -251,6 +300,125 @@ export default function ProfileScreen() {
           myGames.map((game) => <GameCard key={game.id} game={game} />)
         )}
 
+        {/* Friends Section - hidden for guests */}
+        {!isGuest && (
+          <View style={styles.friendsSection}>
+            {/* Incoming requests */}
+            {incomingRequests.length > 0 && (
+              <>
+                <Text style={styles.sectionTitle}>Friend Requests</Text>
+                {incomingRequests.map((req) => (
+                  <View key={req.id} style={styles.friendRow}>
+                    <Pressable
+                      onPress={() => router.push(`/player/${req.profile.id}`)}
+                      style={{ flexDirection: "row", alignItems: "center", flex: 1 }}
+                    >
+                      <Avatar name={req.profile.display_name} imageUrl={req.profile.avatar_url} size={36} />
+                      <Text style={styles.friendName}>{req.profile.display_name ?? "Player"}</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={async () => { await acceptRequest(req.id); fetchFriends(); }}
+                      style={[styles.friendActionBtn, { backgroundColor: Colors.success }]}
+                    >
+                      <Text style={styles.friendActionText}>Accept</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={async () => { await declineRequest(req.id); fetchFriends(); }}
+                      style={[styles.friendActionBtn, { backgroundColor: Colors.darkTertiary, marginLeft: Spacing.xs }]}
+                    >
+                      <Text style={[styles.friendActionText, { color: Colors.textSecondary }]}>Decline</Text>
+                    </Pressable>
+                  </View>
+                ))}
+              </>
+            )}
+
+            {/* Friends list */}
+            <Text style={styles.sectionTitle}>
+              Friends{friends.length > 0 ? ` (${friends.length})` : ""}
+            </Text>
+            {friends.length === 0 ? (
+              <View style={styles.emptyBox}>
+                <Text style={styles.emptyText}>No friends yet</Text>
+                <Text style={styles.emptyHint}>Add friends by their email below</Text>
+              </View>
+            ) : (
+              friends.map((f) => (
+                <Pressable
+                  key={f.id}
+                  onPress={() => router.push(`/player/${f.profile.id}`)}
+                  style={({ pressed }) => [styles.friendRow, pressed && { opacity: 0.7 }]}
+                >
+                  <Avatar name={f.profile.display_name} imageUrl={f.profile.avatar_url} size={36} />
+                  <Text style={styles.friendName}>{f.profile.display_name ?? "Player"}</Text>
+                  <Text style={styles.chevron}>{"\u203A"}</Text>
+                </Pressable>
+              ))
+            )}
+
+            {/* Add friend */}
+            <View style={styles.addFriendCard}>
+              <Text style={styles.addFriendTitle}>Add Friend</Text>
+              <View style={styles.addFriendRow}>
+                <TextInput
+                  style={styles.addFriendInput}
+                  value={friendEmail}
+                  onChangeText={(t) => { setFriendEmail(t); setFriendError(null); setFriendSuccess(null); }}
+                  placeholder="friend@email.com"
+                  placeholderTextColor={Colors.textMuted}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  maxLength={100}
+                />
+                <Pressable
+                  onPress={async () => {
+                    if (!friendEmail.trim() || !friendEmail.includes("@")) {
+                      setFriendError("Enter a valid email");
+                      return;
+                    }
+                    setAddingFriend(true);
+                    setFriendError(null);
+                    setFriendSuccess(null);
+                    const result = await sendRequest(friendEmail.trim());
+                    setAddingFriend(false);
+                    if (result.error) {
+                      setFriendError(result.error);
+                    } else {
+                      setFriendSuccess("Request sent!");
+                      setFriendEmail("");
+                      fetchFriends();
+                    }
+                  }}
+                  disabled={addingFriend}
+                  style={({ pressed }) => [
+                    styles.addFriendBtn,
+                    pressed && { opacity: 0.8 },
+                    addingFriend && { opacity: 0.6 },
+                  ]}
+                >
+                  <Text style={styles.addFriendBtnText}>
+                    {addingFriend ? "..." : "Send"}
+                  </Text>
+                </Pressable>
+              </View>
+              {friendError && <Text style={styles.friendErrorText}>{friendError}</Text>}
+              {friendSuccess && <Text style={styles.friendSuccessText}>{friendSuccess}</Text>}
+            </View>
+          </View>
+        )}
+
+        {/* Share PullUp */}
+        <Pressable
+          onPress={() => setShowShareQR(true)}
+          style={({ pressed }) => [
+            styles.shareBtn,
+            pressed && { opacity: 0.8 },
+          ]}
+        >
+          <Text style={styles.shareBtnText}>Share PullUp</Text>
+          <Text style={styles.shareBtnSub}>Show QR code to invite friends</Text>
+        </Pressable>
+
         {/* Sign Out / Upgrade */}
         <Pressable
           onPress={handleSignOut}
@@ -264,6 +432,31 @@ export default function ProfileScreen() {
           </Text>
         </Pressable>
       </View>
+
+      {/* Share QR Modal */}
+      <Modal
+        visible={showShareQR}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowShareQR(false)}
+      >
+        <Pressable
+          style={styles.shareOverlay}
+          onPress={() => setShowShareQR(false)}
+        >
+          <Text style={styles.shareTitle}>Share PullUp</Text>
+          <View style={styles.shareQrWrap}>
+            <QRCode
+              value={APP_URL}
+              size={200}
+              backgroundColor="#FFD60A"
+              color={Colors.dark}
+            />
+          </View>
+          <Text style={styles.shareHint}>Scan to download PullUp</Text>
+          <Text style={styles.shareDismiss}>Tap anywhere to dismiss</Text>
+        </Pressable>
+      </Modal>
     </ScrollView>
   );
 }
@@ -376,6 +569,32 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
 
+  statsRow: {
+    flexDirection: "row",
+    gap: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    marginBottom: Spacing.xxl,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: Colors.darkCard,
+    borderRadius: BorderRadius.lg,
+    paddingVertical: Spacing.lg,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  statNum: {
+    fontSize: FontSize.xxl,
+    fontWeight: "800",
+    color: Colors.text,
+  },
+  statLabel: {
+    fontSize: FontSize.xs,
+    color: Colors.textMuted,
+    fontWeight: "500",
+    marginTop: 2,
+  },
   sectionTitle: {
     fontSize: FontSize.lg,
     fontWeight: "700",
@@ -425,6 +644,142 @@ const styles = StyleSheet.create({
     color: Colors.dark,
     fontWeight: "700",
     fontSize: FontSize.sm,
+  },
+  friendsSection: {
+    marginTop: Spacing.lg,
+  },
+  friendRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.darkTertiary,
+  },
+  friendName: {
+    flex: 1,
+    marginLeft: Spacing.md,
+    fontSize: FontSize.sm,
+    color: Colors.text,
+    fontWeight: "500",
+  },
+  chevron: {
+    fontSize: 20,
+    color: Colors.textMuted,
+    marginLeft: Spacing.sm,
+  },
+  friendActionBtn: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs + 2,
+    borderRadius: BorderRadius.sm,
+  },
+  friendActionText: {
+    fontSize: FontSize.xs,
+    fontWeight: "700",
+    color: Colors.dark,
+  },
+  addFriendCard: {
+    marginTop: Spacing.lg,
+    marginHorizontal: Spacing.lg,
+    backgroundColor: Colors.darkCard,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  addFriendTitle: {
+    fontSize: FontSize.sm,
+    fontWeight: "700",
+    color: Colors.text,
+    marginBottom: Spacing.md,
+  },
+  addFriendRow: {
+    flexDirection: "row",
+    gap: Spacing.sm,
+  },
+  addFriendInput: {
+    flex: 1,
+    backgroundColor: Colors.darkElevated,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    fontSize: FontSize.sm,
+    color: Colors.text,
+  },
+  addFriendBtn: {
+    backgroundColor: Colors.accent,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.lg,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  addFriendBtnText: {
+    fontSize: FontSize.sm,
+    fontWeight: "700",
+    color: Colors.dark,
+  },
+  friendErrorText: {
+    fontSize: FontSize.xs,
+    color: Colors.error,
+    marginTop: Spacing.sm,
+  },
+  friendSuccessText: {
+    fontSize: FontSize.xs,
+    color: Colors.success,
+    marginTop: Spacing.sm,
+  },
+  shareBtn: {
+    marginTop: Spacing.xxl,
+    marginHorizontal: Spacing.lg,
+    backgroundColor: Colors.darkCard,
+    borderRadius: BorderRadius.lg,
+    paddingVertical: Spacing.lg,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  shareBtnText: {
+    fontSize: FontSize.md,
+    fontWeight: "700",
+    color: Colors.accent,
+  },
+  shareBtnSub: {
+    fontSize: FontSize.xs,
+    color: Colors.textMuted,
+    marginTop: 2,
+  },
+  shareOverlay: {
+    flex: 1,
+    backgroundColor: "#FFD60A",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: Spacing.xxl,
+  },
+  shareTitle: {
+    fontSize: FontSize.xxl,
+    fontWeight: "800",
+    color: Colors.dark,
+    marginBottom: Spacing.xxxl,
+  },
+  shareQrWrap: {
+    padding: Spacing.lg,
+    backgroundColor: "#FFD60A",
+    borderRadius: BorderRadius.lg,
+  },
+  shareHint: {
+    fontSize: FontSize.md,
+    fontWeight: "600",
+    color: Colors.dark,
+    opacity: 0.7,
+    marginTop: Spacing.xxl,
+  },
+  shareDismiss: {
+    fontSize: FontSize.sm,
+    color: Colors.dark,
+    opacity: 0.4,
+    marginTop: Spacing.xl,
   },
   signOutBtn: {
     marginTop: Spacing.xxxxl,

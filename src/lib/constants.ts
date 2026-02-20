@@ -125,3 +125,13 @@ export const UF_CAMPUS_CENTER = {
   latitudeDelta: 0.025,
   longitudeDelta: 0.025,
 };
+
+export const APP_URL = "https://pullup-sepia.vercel.app";
+
+export function getGameCode(id: string): string {
+  return id.replace(/-/g, "").slice(0, 6).toUpperCase();
+}
+
+export function getGameUrl(id: string): string {
+  return `${APP_URL}/game/${id}`;
+}

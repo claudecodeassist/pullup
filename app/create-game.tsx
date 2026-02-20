@@ -115,9 +115,11 @@ export default function CreateGameScreen() {
       return;
     }
     setGuestLoading(true);
-    await guestLogin(guestName.trim(), guestEmail.trim());
+    const guestId = await guestLogin(guestName.trim(), guestEmail.trim());
     setGuestLoading(false);
     setShowGuestPrompt(false);
+    // Auto-create the game with the new guest ID
+    await createGame(guestId);
   };
 
   const handleCreate = async () => {
@@ -125,12 +127,16 @@ export default function CreateGameScreen() {
       setShowGuestPrompt(true);
       return;
     }
+    await createGame(user.id);
+  };
+
+  const createGame = async (userId: string) => {
     setLoading(true);
 
     const { data, error } = await supabase
       .from("games")
       .insert({
-        host_id: user.id,
+        host_id: userId,
         sport,
         skill_level: skillLevel,
         location_id: courtFlexible ? null : locationId,
@@ -152,7 +158,7 @@ export default function CreateGameScreen() {
     const row = data as { id: string } | null;
     if (row) {
       await supabase.from("game_participants")
-        .insert({ game_id: row.id, user_id: user.id, status: "joined" as const });
+        .insert({ game_id: row.id, user_id: userId, status: "joined" as const });
       await copyGameLink(row.id);
       crossAlert("Game posted!", "Link copied — share it!", () => router.back());
     }

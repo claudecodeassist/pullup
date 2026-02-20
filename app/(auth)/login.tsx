@@ -118,11 +118,31 @@ export default function LoginScreen() {
             resizeMode="contain"
           />
 
+          {/* Segmented control */}
+          <View style={styles.segmented}>
+            <Pressable
+              onPress={() => { setIsSignUp(false); setError(null); }}
+              style={[styles.segmentBtn, !isSignUp && styles.segmentBtnActive]}
+            >
+              <Text style={[styles.segmentText, !isSignUp && styles.segmentTextActive]}>
+                Sign In
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => { setIsSignUp(true); setError(null); }}
+              style={[styles.segmentBtn, isSignUp && styles.segmentBtnActiveGreen]}
+            >
+              <Text style={[styles.segmentText, isSignUp && styles.segmentTextActive]}>
+                Sign Up
+              </Text>
+            </Pressable>
+          </View>
+
           <Text style={styles.tagline}>
-            Find your game.{"\n"}Pull up.
+            {isSignUp ? "Join PullUp" : "Welcome back"}
           </Text>
           <Text style={styles.subtitle}>
-            Pickup sports — organized in seconds.
+            {isSignUp ? "Create your free account" : "Sign in to your account"}
           </Text>
 
           {/* Email / Password form */}
@@ -163,23 +183,18 @@ export default function LoginScreen() {
 
             {error && <Text style={styles.error}>{error}</Text>}
 
-            <Button
-              title={isSignUp ? "Create Account" : "Sign In"}
-              onPress={handleSubmit(onSubmit)}
-              size="lg"
-              loading={loading}
-              style={styles.mainBtn}
-            />
-
             <Pressable
-              onPress={() => { setIsSignUp(!isSignUp); setError(null); }}
-              style={{ marginTop: Spacing.md }}
+              onPress={handleSubmit(onSubmit)}
+              disabled={loading}
+              style={({ pressed }) => [
+                styles.mainBtn,
+                { backgroundColor: isSignUp ? "#30D158" : Colors.accent },
+                pressed && { opacity: 0.85 },
+                loading && { opacity: 0.6 },
+              ]}
             >
-              <Text style={styles.switchText}>
-                {isSignUp ? "Already have an account? " : "Don't have an account? "}
-                <Text style={styles.switchLink}>
-                  {isSignUp ? "Sign in" : "Sign up"}
-                </Text>
+              <Text style={styles.mainBtnText}>
+                {loading ? "Please wait..." : isSignUp ? "Create Account" : "Sign In"}
               </Text>
             </Pressable>
 
@@ -252,6 +267,35 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: Spacing.xxxl,
   },
+  segmented: {
+    flexDirection: "row",
+    backgroundColor: Colors.darkCard,
+    borderRadius: BorderRadius.xl,
+    padding: 3,
+    marginBottom: Spacing.xxl,
+    width: "100%",
+  },
+  segmentBtn: {
+    flex: 1,
+    paddingVertical: Spacing.sm + 2,
+    borderRadius: BorderRadius.xl - 2,
+    alignItems: "center",
+  },
+  segmentBtnActive: {
+    backgroundColor: Colors.accent,
+  },
+  segmentBtnActiveGreen: {
+    backgroundColor: "#30D158",
+  },
+  segmentText: {
+    fontSize: FontSize.sm,
+    fontWeight: "600",
+    color: Colors.textMuted,
+  },
+  segmentTextActive: {
+    color: Colors.dark,
+    fontWeight: "700",
+  },
   form: { width: "100%" },
   error: {
     color: Colors.error,
@@ -259,13 +303,18 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: Spacing.md,
   },
-  mainBtn: { marginTop: Spacing.sm },
-  switchText: {
-    color: Colors.textMuted,
-    fontSize: FontSize.sm,
-    textAlign: "center",
+  mainBtn: {
+    marginTop: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    paddingVertical: Spacing.md + 2,
+    alignItems: "center",
+    width: "100%",
   },
-  switchLink: { color: Colors.accent, fontWeight: "600" },
+  mainBtnText: {
+    fontSize: FontSize.md,
+    fontWeight: "700",
+    color: Colors.dark,
+  },
   divider: {
     flexDirection: "row",
     alignItems: "center",

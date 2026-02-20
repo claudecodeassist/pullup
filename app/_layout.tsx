@@ -46,6 +46,12 @@ export default function RootLayout() {
                 title: "Game Details",
               }}
             />
+            <Stack.Screen
+              name="player/[id]"
+              options={{
+                title: "Player Profile",
+              }}
+            />
             <Stack.Screen name="+not-found" />
           </Stack>
         </AuthProvider>

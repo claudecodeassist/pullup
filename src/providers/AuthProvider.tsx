@@ -22,7 +22,7 @@ interface AuthContextType {
   isGuest: boolean;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
-  guestLogin: (name: string, email: string) => Promise<void>;
+  guestLogin: (name: string, email: string) => Promise<string>;
   guestLogout: () => void;
 }
 
@@ -251,7 +251,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const guestLogin = async (name: string, emailAddr: string) => {
+  const guestLogin = async (name: string, emailAddr: string): Promise<string> => {
     const normalizedEmail = emailAddr.toLowerCase().trim();
 
     // Check if a guest profile already exists with this email
@@ -287,6 +287,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     await saveGuest(guestData);
     setGuest(guestData);
+    return guestData.id;
   };
 
   const guestLogout = () => {

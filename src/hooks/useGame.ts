@@ -6,7 +6,7 @@ interface Participant {
   id: string;
   user_id: string;
   status: "joined" | "left";
-  profiles: { display_name: string | null } | null;
+  profiles: { display_name: string | null; avatar_url: string | null } | null;
 }
 
 interface UseGameReturn {
@@ -35,7 +35,7 @@ export function useGame(gameId: string): UseGameReturn {
   const fetchParticipants = useCallback(async () => {
     const { data } = await supabase
       .from("game_participants")
-      .select("id, user_id, status, profiles(display_name)")
+      .select("id, user_id, status, profiles(display_name, avatar_url)")
       .eq("game_id", gameId)
       .eq("status", "joined");
 

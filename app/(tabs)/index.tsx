@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   View,
   FlatList,
@@ -14,6 +14,7 @@ import { GameCard } from "@/components/game/GameCard";
 import { FeedTabs } from "@/components/feed/FeedTabs";
 import { SportFilterChips } from "@/components/feed/SportFilterChips";
 import { FAB } from "@/components/ui/FAB";
+import { supabase } from "@/lib/supabase";
 import { Colors, FontSize, Spacing, Sport } from "@/lib/constants";
 import type { GameWithLocation } from "@/types/database";
 
@@ -21,6 +22,15 @@ export default function HomeScreen() {
   const { user } = useAuth();
   const [tab, setTab] = useState<"upcoming" | "my">("upcoming");
   const [sportFilter, setSportFilter] = useState<Sport | null>(null);
+
+  const [playerCount, setPlayerCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    supabase
+      .from("profiles")
+      .select("*", { count: "exact", head: true })
+      .then(({ count }) => setPlayerCount(count ?? null));
+  }, []);
 
   const { games, loading, refreshing, refresh } = useGames({
     sportFilter,
@@ -38,6 +48,11 @@ export default function HomeScreen() {
         <View style={styles.headerInner}>
           <FeedTabs active={tab} onChange={setTab} />
           <SportFilterChips selected={sportFilter} onSelect={setSportFilter} />
+          {playerCount !== null && (
+            <Text style={styles.playerCount}>
+              {playerCount} player{playerCount !== 1 ? "s" : ""} on PullUp
+            </Text>
+          )}
         </View>
       </View>
 
@@ -86,6 +101,12 @@ const styles = StyleSheet.create({
     maxWidth: 640,
     width: "100%",
     alignSelf: "center",
+  },
+  playerCount: {
+    fontSize: FontSize.xs,
+    color: Colors.textMuted,
+    textAlign: "center",
+    paddingBottom: Spacing.sm,
   },
   listWrap: {
     maxWidth: 640,

@@ -232,6 +232,46 @@ export interface Database {
           },
         ];
       };
+      friendships: {
+        Row: {
+          id: string;
+          requester_id: string;
+          addressee_id: string;
+          status: "pending" | "accepted" | "declined";
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          requester_id: string;
+          addressee_id: string;
+          status?: "pending" | "accepted" | "declined";
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          requester_id?: string;
+          addressee_id?: string;
+          status?: "pending" | "accepted" | "declined";
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "friendships_requester_id_fkey";
+            columns: ["requester_id"];
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "friendships_addressee_id_fkey";
+            columns: ["addressee_id"];
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
@@ -240,6 +280,7 @@ export interface Database {
       skill_level_type: "beginner" | "intermediate" | "advanced" | "any";
       game_status_type: "open" | "full" | "cancelled" | "completed";
       participant_status_type: "joined" | "left";
+      friendship_status: "pending" | "accepted" | "declined";
     };
     CompositeTypes: Record<string, never>;
   };
@@ -255,5 +296,7 @@ export type Profile = Tables<"profiles">;
 export type Game = Tables<"games">;
 export type GameParticipant = Tables<"game_participants">;
 export type Message = Tables<"messages">;
+
+export type Friendship = Tables<"friendships">;
 
 export type GameWithLocation = Game & { locations: Location | null };

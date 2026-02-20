@@ -26,6 +26,7 @@ import { ChatInput } from "@/components/game/ChatInput";
 import { copyGameLink } from "@/lib/clipboard";
 import { formatGameTime, formatRelative } from "@/lib/datetime";
 import { supabase } from "@/lib/supabase";
+import QRCode from "react-native-qrcode-svg";
 import {
   Colors,
   Gradient,
@@ -37,6 +38,8 @@ import {
   SkillLevel,
   sportInfo,
   equipmentLabel as getEquipLabel,
+  getGameCode,
+  getGameUrl,
 } from "@/lib/constants";
 
 let DateTimePicker: any = null;
@@ -88,6 +91,7 @@ export default function GameDetailScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [showBigCode, setShowBigCode] = useState(false);
 
   // Scroll chat to bottom when new messages arrive
   useEffect(() => {
@@ -123,6 +127,26 @@ export default function GameDetailScreen() {
     // Already handled by JoinButton
   };
 
+  const performJoin = async (gameId: string, userId: string) => {
+    const { data: existing } = await supabase
+      .from("game_participants")
+      .select("id, status")
+      .eq("game_id", gameId)
+      .eq("user_id", userId)
+      .single();
+
+    if (existing) {
+      await supabase
+        .from("game_participants")
+        .update({ status: "joined" as const })
+        .eq("id", (existing as { id: string }).id);
+    } else {
+      await supabase
+        .from("game_participants")
+        .insert({ game_id: gameId, user_id: userId, status: "joined" as const });
+    }
+  };
+
   const handleGuestSubmit = async () => {
     if (guestName.trim().length < 2) {
       crossAlert("Name required", "Please enter your name (at least 2 characters)");
@@ -133,11 +157,12 @@ export default function GameDetailScreen() {
       return;
     }
     setGuestLoading(true);
-    await guestLogin(guestName.trim(), guestEmail.trim());
+    const guestId = await guestLogin(guestName.trim(), guestEmail.trim());
+    // Auto-join the game immediately
+    await performJoin(id!, guestId);
     setGuestLoading(false);
     setShowGuestPrompt(false);
-    // After guest login, the page will re-render with user set
-    // They can then tap Join again
+    refresh();
   };
 
   const startEdit = () => {
@@ -211,6 +236,16 @@ export default function GameDetailScreen() {
             <Text style={styles.heroTime}>
               {formatRelative(game.starts_at)}
             </Text>
+
+            {/* Game code */}
+            <Pressable
+              onPress={() => setShowBigCode(true)}
+              style={({ pressed }) => [styles.codeRow, pressed && { opacity: 0.7 }]}
+            >
+              <Text style={styles.codeLabel}>CODE</Text>
+              <Text style={styles.codeValue}>{getGameCode(game.id)}</Text>
+              <Text style={styles.codeTap}>Show Big</Text>
+            </Pressable>
 
             {/* Player count */}
             <View style={styles.countRow}>
@@ -619,6 +654,32 @@ export default function GameDetailScreen() {
         </View>
       </ScrollView>
 
+      {/* ═══ BIG CODE + QR MODAL ═══ */}
+      <Modal
+        visible={showBigCode}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowBigCode(false)}
+      >
+        <Pressable
+          style={styles.bigCodeOverlay}
+          onPress={() => setShowBigCode(false)}
+        >
+          <Text style={styles.bigCodeTitle}>Game Code</Text>
+          <Text style={styles.bigCodeValue}>{getGameCode(game.id)}</Text>
+          <View style={styles.qrWrap}>
+            <QRCode
+              value={getGameUrl(game.id)}
+              size={200}
+              backgroundColor="#FFD60A"
+              color={Colors.dark}
+            />
+          </View>
+          <Text style={styles.bigCodeHint}>Scan to join this game</Text>
+          <Text style={styles.bigCodeDismiss}>Tap anywhere to dismiss</Text>
+        </Pressable>
+      </Modal>
+
       {/* ═══ GUEST PROMPT MODAL ═══ */}
       <Modal
         visible={showGuestPrompt}
@@ -888,6 +949,77 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   progressFill: { height: "100%", borderRadius: 3 },
+
+  /* Game code */
+  codeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    backgroundColor: Colors.darkCard,
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    marginBottom: Spacing.lg,
+  },
+  codeLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: Colors.textMuted,
+    letterSpacing: 1,
+  },
+  codeValue: {
+    fontSize: FontSize.md,
+    fontWeight: "800",
+    color: Colors.accent,
+    letterSpacing: 2,
+    fontVariant: ["tabular-nums"],
+  },
+  codeTap: {
+    fontSize: FontSize.xs,
+    color: Colors.textMuted,
+    fontWeight: "500",
+  },
+
+  /* Big code modal */
+  bigCodeOverlay: {
+    flex: 1,
+    backgroundColor: "#FFD60A",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: Spacing.xxl,
+  },
+  bigCodeTitle: {
+    fontSize: FontSize.lg,
+    fontWeight: "700",
+    color: Colors.dark,
+    opacity: 0.6,
+    marginBottom: Spacing.sm,
+  },
+  bigCodeValue: {
+    fontSize: 64,
+    fontWeight: "900",
+    color: Colors.dark,
+    letterSpacing: 8,
+    marginBottom: Spacing.xxxl,
+  },
+  qrWrap: {
+    padding: Spacing.lg,
+    backgroundColor: "#FFD60A",
+    borderRadius: BorderRadius.lg,
+  },
+  bigCodeHint: {
+    fontSize: FontSize.md,
+    fontWeight: "600",
+    color: Colors.dark,
+    opacity: 0.7,
+    marginTop: Spacing.xxl,
+  },
+  bigCodeDismiss: {
+    fontSize: FontSize.sm,
+    color: Colors.dark,
+    opacity: 0.4,
+    marginTop: Spacing.xl,
+  },
 
   /* Detail card */
   detailCard: {
